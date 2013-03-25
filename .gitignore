@@ -1,0 +1,7 @@
+*.db
+*.o
+dhcpd
+dhcpd6
+
+.*.sw?
+.sw?
