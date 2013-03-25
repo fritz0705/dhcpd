@@ -37,6 +37,11 @@ uint8_t send_buffer[SEND_BUF_LEN];
 
 bool debug = true;
 
+static const char *BROKEN_SOFTWARE_NOTIFICATION = 
+"#################################### ALERT ####################################\n"
+"  BROKEN SOFTWARE NOTIFICATION - SOMETHING SENDS INVALID DHCP MESSAGES IN YOUR\n"
+"                                    NETWORK\n";
+
 #define MAC_ADDRSTRLEN 18
 
 /* This function converts a L2 MAC address in binary format to a text format */
@@ -515,10 +520,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 			break;
 
 		default:
-			fprintf(stderr,
-				"#################################### ALERT ####################################"
-				"  BROKEN SOFTWARE NOTIFICATION - SOMETHING SENDS INVALID DHCP MESSAGES IN YOUR"
-				"                                    NETWORK");
+			fprintf(stderr, BROKEN_SOFTWARE_NOTIFICATION);
 			break;
 	}
 }
