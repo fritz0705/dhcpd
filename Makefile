@@ -20,3 +20,5 @@ clean:
 	$(RM) dhcpd6
 	$(RM) *.o
 
+dhcpd.c: dhcp.h array.h
+
