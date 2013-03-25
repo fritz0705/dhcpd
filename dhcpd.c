@@ -18,36 +18,39 @@
 #include <ev.h>
 #include <sqlite3.h>
 
+#include "array.h"
 #include "dhcp.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
 
-#define COPY_ARRAY(dst, src, len) { \
-		struct { \
-			uint8_t _[len]; \
-		} *_src, *_dst; \
-		_src = (void*)src; \
-		_dst = (void*)dst; \
-		*_dst = *_src; \
-	}
-
 sqlite3 *leasedb;
 
 struct sockaddr_in server_id;
+struct sockaddr_in broadcast = {
+	.sin_family = AF_INET,
+	.sin_addr = {INADDR_BROADCAST},
+};
 
-char recv_buffer[RECV_BUF_LEN];
-char send_buffer[SEND_BUF_LEN];
+uint8_t recv_buffer[RECV_BUF_LEN];
+uint8_t send_buffer[SEND_BUF_LEN];
 
 bool debug = true;
 
 #define MAC_ADDRSTRLEN 18
 
+/* This function converts a L2 MAC address in binary format to a text format */
 static int mac_ntop(char *addr, char *dst, size_t s)
 {
 	return snprintf(dst, s,
 		"%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", 
 		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
+/* Return netmask for specified prefix length */
+static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
+{
+	return htonl(0xFFFFFFFFU - (1 << (32 - prefixlen)) + 1);
 }
 
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
@@ -56,230 +59,347 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	sqlite3_stmt *ldb_query;
 
 	sqlerr = sqlite3_prepare_v2(leasedb,
-		"SELECT address, routers, nameservers, prefixlen "
+		"SELECT address, routers, nameservers, prefixlen, leasetime "
 		"FROM leases "
 		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
 	if (sqlerr != SQLITE_OK)
-		goto failure;
+	{
+		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+		return;
+	}
 
 	sqlerr = sqlite3_bind_text(ldb_query, 1, msg->chaddr, -1, NULL);
 	if (sqlerr != SQLITE_OK)
-		goto failure;
+		goto sql_error;
 
 	sqlerr = sqlite3_step(ldb_query);
+
 	if (sqlerr != SQLITE_ROW)
 	{
 		if (sqlerr != SQLITE_DONE)
-			goto failure;
-		goto finalize;
+			goto sql_error;
+		sqlite3_finalize(ldb_query);
+		return;
 	}
 
-	const unsigned char *l_address, *l_routers, *l_nameservers;
-	int l_prefixlen;
+	struct {
+		const char *address;
+		const char *routers;
+		const char *nameservers;
+		uint8_t prefixlen;
+		uint32_t leasetime;
+	} lease_entry;
 
-	l_address = sqlite3_column_text(ldb_query, 0);
-	l_routers = sqlite3_column_text(ldb_query, 1);
-	l_nameservers = sqlite3_column_text(ldb_query, 2);
-	l_prefixlen = sqlite3_column_int(ldb_query, 3);
+	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
+	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
+	lease_entry.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
+	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
+	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
 
-	uint32_t subnetmask = 0xFFFFFFFFU - (1 << (32 - l_prefixlen)) + 1;
-	subnetmask = htonl(subnetmask);
+	struct in_addr address, routers[4], nameservers[4];
 
-	size_t send_len = DHCP_MSG_HDRLEN;
+	if (!inet_pton(AF_INET, lease_entry.address, &address))
+		goto invalid_lease_entry;
 
-	memset(send_buffer, 0, DHCP_MSG_LEN);
-	*DHCP_MSG_F_XID(send_buffer) = *DHCP_MSG_F_XID(msg->data);
-	*DHCP_MSG_F_HTYPE(send_buffer) = *DHCP_MSG_F_HTYPE(msg->data);
-	*DHCP_MSG_F_HLEN(send_buffer) = *DHCP_MSG_F_HLEN(msg->data);
-	*DHCP_MSG_F_OP(send_buffer) = 2;
-	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
-	COPY_ARRAY(DHCP_MSG_F_MAGIC(send_buffer), DHCP_MSG_MAGIC, 4);
-	COPY_ARRAY(DHCP_MSG_F_CHADDR(send_buffer), DHCP_MSG_F_CHADDR(msg->data), 16);
+	if (!inet_pton(AF_INET, lease_entry.routers, routers))
+		goto invalid_lease_entry;
 
-	uint8_t *magic = DHCP_MSG_F_MAGIC(send_buffer);
-	printf("[%u %u %u %u]\n", magic[0], magic[1], magic[2], magic[3]);
+	if (!inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+		goto invalid_lease_entry;
 
-	if (!DHCP_MSG_MAGIC_CHECK(DHCP_MSG_F_MAGIC(send_buffer)))
+	if (0)
+	{
+invalid_lease_entry:
+		fprintf(stderr, "Invalid lease entry for %s:\n"
+				"\tAddress: %s\n"
+				"\tRouters: %s\n"
+				"\tNameservers: %s\n"
+				"\tPrefix Length: %hhu\n"
+				"\tLease Time: %u\n",
+				msg->chaddr,
+				lease_entry.address,
+				lease_entry.routers,
+				lease_entry.nameservers,
+				lease_entry.prefixlen,
+				lease_entry.leasetime);
+		sqlite3_finalize(ldb_query);
 		return;
+	}
 
-	inet_pton(AF_INET, (const char *)l_address, DHCP_MSG_F_YIADDR(send_buffer));
+	/* Calculate netmask value for the defined prefix length */
+	uint32_t netmask = netmask_from_prefixlen(lease_entry.prefixlen);
+
+	sqlite3_finalize(ldb_query);
+
+	/* Prepare DHCP message to send */
+	size_t send_len = DHCP_MSG_HDRLEN;
+	memset(send_buffer, 0, DHCP_MSG_LEN);
+	dhcp_msg_prepare(send_buffer, msg->data);
+
+	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+
+	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
 
 	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
 
-	options[0] = 53;
+	options[0] = DHCP_OPT_MSGTYPE;
 	options[1] = 1;
 	options[2] = DHCPOFFER;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 3;
 
-	options[0] = 1;
+	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), (uint8_t*)&subnetmask, 4);
+	COPY_ARRAY((options + 2), (uint8_t*)&netmask, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 3;
+	options[0] = DHCP_OPT_ROUTER;
 	options[1] = 4;
-	inet_pton(AF_INET, (const char *)l_routers, options + 2);
+	*(struct in_addr *)(options + 2) = routers[0];
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 54;
+	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	COPY_ARRAY((options + 2), &server_id.sin_addr, 4);
-	send_len += 6;
-
-	options[0] = 51;
-	options[1] = 4;
-	options[2] = 0xff;
-	options[3] = 0xff;
-	options[4] = 0xff;
-	options[5] = 0xff;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 6;
+	options[0] = DHCP_OPT_LEASETIME;
 	options[1] = 4;
-	inet_pton(AF_INET, (const char *)l_nameservers, options + 2);
+	*(uint32_t*)(options + 2) = htonl(lease_entry.leasetime);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	*options = 255;
+	options[0] = DHCP_OPT_DNS;
+	options[1] = 4;
+	*(struct in_addr *)(options + 2) = nameservers[0];
+	options = DHCP_OPT_NEXT(options);
+	send_len += 6;
+
+	*options = DHCP_OPT_END;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 1;
 
-	struct sockaddr_in rcpt_addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(68),
-		.sin_addr = {INADDR_BROADCAST},
-	};
+	err = sendto(w->fd,
+		send_buffer, send_len,
+		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
-	err = sendto(w->fd, send_buffer, send_len, MSG_DONTWAIT, (struct sockaddr *)&rcpt_addr, sizeof rcpt_addr);
+	if (err < 0)
+		error(0, 1, "Could not send DHCPOFFER");
 
-finalize:
-	sqlite3_finalize(ldb_query);
 	return;
+sql_error:
 
-failure:
 	error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	sqlite3_finalize(ldb_query);
-	return;
 }
 
 static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	struct in_addr *requested_addr, *requested_server;
+	uint8_t *options;
+	struct dhcp_opt current_opt;
+
+	requested_addr = NULL;
+	requested_server = (struct in_addr *)DHCP_MSG_F_SIADDR(msg->data);
+	options = DHCP_MSG_F_OPTIONS(msg->data);
+
+	while (dhcp_opt_next(&options, &current_opt, msg->end))
+		switch (current_opt.code)
+		{
+			case 50:
+				requested_addr = (struct in_addr *)current_opt.data;
+				break;
+			case 54:
+				requested_server = (struct in_addr *)current_opt.data;
+				break;
+		}
+
+	if (requested_server->s_addr != server_id.sin_addr.s_addr)
+		return;
+
 	int sqlerr, err;
 	sqlite3_stmt *ldb_query;
 
 	sqlerr = sqlite3_prepare_v2(leasedb,
-		"SELECT address, routers, nameservers, prefixlen "
+		"SELECT address, routers, nameservers, prefixlen, leasetime "
 		"FROM leases "
 		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
 	if (sqlerr != SQLITE_OK)
-		goto failure;
+	{
+		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+		return;
+	}
 
 	sqlerr = sqlite3_bind_text(ldb_query, 1, msg->chaddr, -1, NULL);
 	if (sqlerr != SQLITE_OK)
-		goto failure;
+		goto sql_error;
 
 	sqlerr = sqlite3_step(ldb_query);
 	if (sqlerr != SQLITE_ROW)
 	{
 		if (sqlerr != SQLITE_DONE)
-			goto failure;
-		goto finalize;
+			goto sql_error;
+		sqlite3_finalize(ldb_query);
+		goto nack;
 	}
 
-	const unsigned char *l_address, *l_routers, *l_nameservers;
-	int l_prefixlen;
+	struct {
+		const char *address;
+		const char *routers;
+		const char *nameservers;
+		uint8_t prefixlen;
+		uint32_t leasetime;
+	} lease_entry;
 
-	l_address = sqlite3_column_text(ldb_query, 0);
-	l_routers = sqlite3_column_text(ldb_query, 1);
-	l_nameservers = sqlite3_column_text(ldb_query, 2);
-	l_prefixlen = sqlite3_column_int(ldb_query, 3);
+	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
+	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
+	lease_entry.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
+	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
+	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
 
-	uint32_t subnetmask = 0xFFFFFFFFU - (1 << (32 - l_prefixlen)) + 1;
-	subnetmask = htonl(subnetmask);
+	struct in_addr address, routers[4], nameservers[4];
 
-	size_t send_len = DHCP_MSG_HDRLEN;
+	if (!inet_pton(AF_INET, lease_entry.address, &address))
+		goto invalid_lease_entry;
 
-	memset(send_buffer, 0, DHCP_MSG_LEN);
-	*DHCP_MSG_F_XID(send_buffer) = *DHCP_MSG_F_XID(msg->data);
-	*DHCP_MSG_F_HTYPE(send_buffer) = *DHCP_MSG_F_HTYPE(msg->data);
-	*DHCP_MSG_F_HLEN(send_buffer) = *DHCP_MSG_F_HLEN(msg->data);
-	*DHCP_MSG_F_OP(send_buffer) = 2;
-	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
-	COPY_ARRAY(DHCP_MSG_F_MAGIC(send_buffer), DHCP_MSG_MAGIC, 4);
-	COPY_ARRAY(DHCP_MSG_F_CHADDR(send_buffer), DHCP_MSG_F_CHADDR(msg->data), 16);
+	if (!inet_pton(AF_INET, lease_entry.routers, routers))
+		goto invalid_lease_entry;
 
-	if (!DHCP_MSG_MAGIC_CHECK(DHCP_MSG_F_MAGIC(send_buffer)))
+	if (!inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+		goto invalid_lease_entry;
+
+	if (0)
+	{
+invalid_lease_entry:
+		fprintf(stderr, "Invalid lease entry for %s:\n"
+				"\tAddress: %s\n"
+				"\tRouters: %s\n"
+				"\tNameservers: %s\n"
+				"\tPrefix Length: %hhu\n"
+				"\tLease Time: %u\n",
+				msg->chaddr,
+				lease_entry.address,
+				lease_entry.routers,
+				lease_entry.nameservers,
+				lease_entry.prefixlen,
+				lease_entry.leasetime);
+		sqlite3_finalize(ldb_query);
+		goto nack;
+	}
+
+	uint32_t netmask = netmask_from_prefixlen(lease_entry.prefixlen);
+
+	sqlite3_finalize(ldb_query);
+
+	if (memcmp(&address, requested_addr, 4) != 0)
+	{
+		size_t send_len;
+nack:
+		send_len = DHCP_MSG_HDRLEN;
+		memset(send_buffer, 0, DHCP_MSG_LEN);
+		dhcp_msg_prepare(send_buffer, msg->data);
+
+		COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+
+		uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
+
+		options[0] = DHCP_OPT_MSGTYPE;
+		options[1] = 1;
+		options[2] = DHCPNAK;
+		options = DHCP_OPT_NEXT(options);
+		send_len += 3;
+
+		options[0] = DHCP_OPT_END;
+		options = DHCP_OPT_NEXT(options);
+		send_len += 1;
+
+		err = sendto(w->fd,
+			send_buffer, send_len,
+			MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
+
+		if (err < 0)
+			error(0, 1, "Could not send DHCPNAK");
+		
 		return;
+	}
 
-	inet_pton(AF_INET, (const char *)l_address, DHCP_MSG_F_YIADDR(send_buffer));
+	/* Prepare DHCP message to send */
+	size_t send_len = DHCP_MSG_HDRLEN;
+	memset(send_buffer, 0, DHCP_MSG_LEN);
+	dhcp_msg_prepare(send_buffer, msg->data);
 
-	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
+	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
-	options[0] = 53;
+	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
+
+	options = DHCP_MSG_F_OPTIONS(send_buffer);
+
+	options[0] = DHCP_OPT_MSGTYPE;
 	options[1] = 1;
 	options[2] = DHCPACK;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 3;
 
-	options[0] = 1;
+	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), (uint8_t*)&subnetmask, 4);
+	COPY_ARRAY((options + 2), (uint8_t*)&netmask, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 3;
+	options[0] = DHCP_OPT_ROUTER;
 	options[1] = 4;
-	inet_pton(AF_INET, (const char *)l_routers, options + 2);
+	*(struct in_addr *)(options + 2) = routers[0];
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 54;
+	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	COPY_ARRAY((options + 2), &server_id.sin_addr, 4);
-	send_len += 6;
-
-	options[0] = 51;
-	options[1] = 4;
-	options[2] = 0xff;
-	options[3] = 0xff;
-	options[4] = 0xff;
-	options[5] = 0xff;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = 6;
+	options[0] = DHCP_OPT_LEASETIME;
 	options[1] = 4;
-	inet_pton(AF_INET, (const char *)l_nameservers, options + 2);
+	*(uint32_t*)(options + 2) = htonl(lease_entry.leasetime);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	*options = 255;
+	options[0] = DHCP_OPT_DNS;
+	options[1] = 4;
+	*(struct in_addr *)(options + 2) = nameservers[0];
+	options = DHCP_OPT_NEXT(options);
+	send_len += 6;
+
+	*options = DHCP_OPT_END;
 	options = DHCP_OPT_NEXT(options);
 	send_len += 1;
 
-	struct sockaddr_in rcpt_addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(68),
-		.sin_addr = {INADDR_BROADCAST},
-	};
+	err = sendto(w->fd,
+		send_buffer, send_len,
+		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
-	err = sendto(w->fd, send_buffer, send_len, MSG_DONTWAIT, (struct sockaddr *)&rcpt_addr, sizeof rcpt_addr);
+	if (err < 0)
+		error(0, 1, "Could not send DHCPACK");
 
-finalize:
-	sqlite3_finalize(ldb_query);
 	return;
+sql_error:
 
-failure:
 	error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	sqlite3_finalize(ldb_query);
-	return;
 }
 
 static void release_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
+{
+}
+
+static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
+{
+}
+
+static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 }
 
@@ -288,6 +408,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 	struct sockaddr_in src_addr;
 	socklen_t src_addrlen;
 
+	/* Receive data from socket */
 	ssize_t recvd = recvfrom(
 		w->fd,
 		recv_buffer,
@@ -295,14 +416,18 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 		MSG_DONTWAIT,
 		(struct sockaddr * restrict)&src_addr, &src_addrlen);
 
+	/* Detect errors */
 	if (recvd < 0)
 		return;
+	/* Detect too small messages */
 	if (recvd < 241)
 		return;
+	/* Check magic value */
 	uint8_t *magic = DHCP_MSG_F_MAGIC(recv_buffer);
 	if (!DHCP_MSG_MAGIC_CHECK(magic))
 		return;
 
+	/* Convert addresses to strings */
 	char ciaddr[INET_ADDRSTRLEN],
 			 yiaddr[INET_ADDRSTRLEN],
 			 siaddr[INET_ADDRSTRLEN],
@@ -317,6 +442,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 	inet_ntop(AF_INET, &src_addr.sin_addr, srcaddr, sizeof srcaddr);
 	mac_ntop(DHCP_MSG_F_CHADDR(recv_buffer), chaddr, sizeof chaddr);
 
+	/* Extract message type from options */
 	uint8_t *options = DHCP_MSG_F_OPTIONS(recv_buffer);
 	struct dhcp_opt current_option;
 
@@ -354,6 +480,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 
 	struct dhcp_msg msg = {
 		.data = recv_buffer,
+		.end = recv_buffer + recvd,
 		.length = recvd,
 		.type = msg_type,
 		.ciaddr = ciaddr,
@@ -379,6 +506,14 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 			release_cb(EV_A_ w, &msg);
 			break;
 
+		case DHCPDECLINE:
+			decline_cb(EV_A_ w, &msg);
+			break;
+
+		case DHCPINFORM:
+			inform_cb(EV_A_ w, &msg);
+			break;
+
 		default:
 			fprintf(stderr,
 				"#################################### ALERT ####################################"
@@ -390,6 +525,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 
 int main(int argc, char **argv)
 {
+	broadcast.sin_port = htons(68);
 	if (argc != 2)
 		error(1, 0, "Usage: dhcpd INTERFACE");
 

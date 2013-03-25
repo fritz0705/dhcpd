@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "array.h"
+
 /* A DHCP message consists of a fixed-length header and a variable-length
  * option part:
  *
@@ -52,17 +54,29 @@
 #define DHCP_MSG_F_MAGIC(m)   ((uint8_t*)(m+236))
 #define DHCP_MSG_F_OPTIONS(m) ((uint8_t*)(m+240))
 
-#define DHCP_MSG_LEN          (576)
-#define DHCP_MSG_HDRLEN       (240)
-#define DHCP_MSG_MAGIC        ((uint8_t[]){ 99, 130, 83, 99 })
+#define DHCP_MSG_LEN    (576)
+#define DHCP_MSG_HDRLEN (240)
+#define DHCP_MSG_MAGIC  ((uint8_t[]){ 99, 130, 83, 99 })
 
 #define DHCP_MSG_MAGIC_CHECK(m) (m[0] == 99 && m[1] == 130 && m[2] == 83 && m[3] == 99)
 
-#define DHCP_OPT_F_CODE(o)    ((uint8_t*)(o))
-#define DHCP_OPT_F_LEN(o)     ((uint8_t*)(o+1))
-#define DHCP_OPT_F_DATA(o)    ((char*)(o+2))
+#define DHCP_OPT_F_CODE(o) ((uint8_t*)(o))
+#define DHCP_OPT_F_LEN(o)  ((uint8_t*)(o+1))
+#define DHCP_OPT_F_DATA(o) ((char*)(o+2))
 
-#define DHCP_OPT_NEXT(o)      ((typeof(o))((*((uint8_t*)o)!=255&&*((uint8_t*)o)!=0)?(((uint8_t*)o)+((uint8_t*)o)[1]+2):(((uint8_t*)o)+1)))
+#define DHCP_OPT_NEXT(o) ((typeof(o))((*((uint8_t*)(o))!=255&&*((uint8_t*)(o))!=0)?(((uint8_t*)(o))+((uint8_t*)(o))[1]+2):(((uint8_t*)(o))+1)))
+
+enum dhcp_opt_type
+{
+	DHCP_OPT_STUB = 0,
+	DHCP_OPT_NETMASK = 1,
+	DHCP_OPT_ROUTER = 3,
+	DHCP_OPT_DNS = 6,
+	DHCP_OPT_LEASETIME = 51,
+	DHCP_OPT_MSGTYPE = 53,
+	DHCP_OPT_SERVERID = 54,
+	DHCP_OPT_END = 255
+};
 
 enum dhcp_msg_type
 {
@@ -84,7 +98,8 @@ struct dhcp_opt
 };
 
 struct dhcp_msg {
-	char *data;
+	uint8_t *data;
+	uint8_t *end;
 	size_t length;
 
 	enum dhcp_msg_type type;
@@ -97,6 +112,16 @@ struct dhcp_msg {
 
 	struct sockaddr *source;
 };
+
+static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
+{
+	*DHCP_MSG_F_XID(reply) = *DHCP_MSG_F_XID(original);
+	*DHCP_MSG_F_HTYPE(reply) = *DHCP_MSG_F_HTYPE(original);
+	*DHCP_MSG_F_HLEN(reply) = *DHCP_MSG_F_HLEN(original);
+	*DHCP_MSG_F_OP(reply) = (*DHCP_MSG_F_OP(reply) == 2 ? 1 : 2);
+	COPY_ARRAY(DHCP_MSG_F_MAGIC(reply), DHCP_MSG_MAGIC, 4);
+	COPY_ARRAY(DHCP_MSG_F_CHADDR(reply), DHCP_MSG_F_CHADDR(original), 16);
+}
 
 static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *end)
 {
@@ -116,7 +141,7 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 
 	if (*cur >= end)
 		return false;
-	*cur += opt->len + (opt->data == NULL ? 1 : 2);
+	*cur = DHCP_OPT_NEXT(*cur);
 	if (*cur - opt->len >= end)
 		return false;
 

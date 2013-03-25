@@ -3,7 +3,7 @@
 CC := gcc
 LD := gcc
 LDFLAGS := -lev -lsqlite3 $(LDFLAGS)
-CFLAGS := -Wall -Wextra -Wno-unused-parameter -O3 -std=gnu99 -g -pedantic $(CFLAGS)
+CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -g -pedantic $(CFLAGS)
 
 all: dhcpd dhcpd6
 
