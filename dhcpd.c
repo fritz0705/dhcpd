@@ -33,6 +33,7 @@
 #include "error.h"
 #include "db.h"
 #include "config.h"
+#include "iplist.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
@@ -73,63 +74,14 @@ static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
 	return htonl(0xFFFFFFFFU - (1 << (32 - prefixlen)) + 1);
 }
 
-static bool dump_iplist(struct in_addr *in, size_t in_cnt, char *out, size_t out_len)
+static void msg_debug(struct dhcp_msg *msg, int dir)
 {
-	size_t n_len = INET_ADDRSTRLEN * in_cnt + in_cnt;
-	memset(out, 0, n_len);
-	if (n_len > out_len)
-		return false;
+	if (dir == 0)
+		fprintf(stderr, "--- INGOING ---\n");
+	else if (dir == 1)
+		fprintf(stderr, "--- OUTGOING ---\n");
 
-	for (size_t i = 0; i < in_cnt; ++i)
-	{
-		inet_ntop(AF_INET, &in[i], out, INET_ADDRSTRLEN);
-
-		while (*out)
-			++out;
-
-		*out = ',';
-		++out;
-	}
-
-	*(out-1) = 0;
-	//out[n_len-1] = 0;
-
-	return true;
-}
-
-static bool parse_iplist(const char *in, struct in_addr **out, size_t *cnt)
-{
-	size_t off = 0;
-	char addr[INET_ADDRSTRLEN];
-	memset(addr, 0, INET_ADDRSTRLEN);
-	while (*in && off < INET_ADDRSTRLEN-1)
-	{
-		addr[off++] = *(in++);
-
-		if (*in == ',' || *in == 0)
-		{
-			*out = realloc(*out, sizeof **out * ++(*cnt));
-			if (inet_pton(AF_INET, addr, &(*out)[(*cnt)-1]) == 0)
-				goto return_false;
-
-			off = 0;
-			memset(addr, 0, INET_ADDRSTRLEN);
-
-			if (*in != 0)
-				++in;
-		}
-	}
-
-	if (!(off < INET_ADDRSTRLEN-1))
-	{
-return_false:
-		free(*out);
-		*out = NULL;
-		*cnt = 0;
-		return false;
-	}
-
-	return true;
+	dhcp_msg_dump(stderr, msg);
 }
 
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
@@ -227,11 +179,11 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 			goto invalid_lease_entry;
 
 		if (db_lease.routers)
-			if (!parse_iplist(db_lease.routers, &lease.routers, &lease.routers_cnt))
+			if (!iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt))
 				goto invalid_lease_entry;
 
 		if (db_lease.nameservers)
-			if (!parse_iplist(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+			if (!iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
 				goto invalid_lease_entry;
 
 		if (0)
@@ -267,7 +219,7 @@ offer:
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
-	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &msg->sid->sin_addr, 4);
 
 	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = lease.address;
 
@@ -294,7 +246,7 @@ offer:
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
-	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
+	ARRAY_COPY((options + 2), &msg->sid->sin_addr, 4);
 	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_LEASETIME;
@@ -357,7 +309,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 				break;
 		}
 
-	if (requested_server->s_addr != server_id.sin_addr.s_addr)
+	if (requested_server->s_addr != msg->sid->sin_addr.s_addr)
 		return;
 
 	int sqlerr, err;
@@ -414,9 +366,9 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 				lease.prefixlen = cfg.prefixlen;
 
 				char routers[INET_ADDRSTRLEN * lease.routers_cnt + lease.routers_cnt];
-				dump_iplist(lease.routers, lease.routers_cnt, routers, ARRAY_LEN(routers));
+				iplist_dump(lease.routers, lease.routers_cnt, routers, ARRAY_LEN(routers));
 				char nameservers[INET_ADDRSTRLEN * lease.nameservers_cnt + lease.nameservers_cnt];
-				dump_iplist(lease.nameservers, lease.nameservers_cnt, nameservers, ARRAY_LEN(nameservers));
+				iplist_dump(lease.nameservers, lease.nameservers_cnt, nameservers, ARRAY_LEN(nameservers));
 				char address[INET_ADDRSTRLEN];
 				inet_ntop(AF_INET, &lease.address, address, INET_ADDRSTRLEN);
 				
@@ -466,11 +418,11 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 			goto invalid_lease_entry;
 
 		if (db_lease.routers)
-			if (!parse_iplist(db_lease.routers, &lease.routers, &lease.routers_cnt))
+			if (!iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt))
 				goto invalid_lease_entry;
 
 		if (db_lease.nameservers)
-			if (!parse_iplist(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+			if (!iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
 				goto invalid_lease_entry;
 
 		if (0)
@@ -513,7 +465,7 @@ nack:
 		memset(send_buffer, 0, DHCP_MSG_LEN);
 		dhcp_msg_prepare(send_buffer, msg->data);
 
-		ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+		ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &msg->sid->sin_addr, 4);
 
 		uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
 
@@ -541,7 +493,7 @@ ack:
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
-	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &msg->sid->sin_addr, 4);
 
 	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = lease.address;
 
@@ -568,7 +520,7 @@ ack:
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
-	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
+	ARRAY_COPY((options + 2), &msg->sid->sin_addr, 4);
 	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_LEASETIME;
@@ -682,11 +634,12 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 		.giaddr = giaddr,
 		.chaddr = chaddr,
 		.srcaddr = srcaddr,
-		.source = (struct sockaddr *)&src_addr
+		.source = (struct sockaddr *)&src_addr,
+		.sid = (struct sockaddr_in *)&server_id
 	};
 
 	if (debug)
-		dhcp_msg_dump(stderr, &msg);
+		msg_debug(&msg, 0);
 
 	switch (msg_type)
 	{
