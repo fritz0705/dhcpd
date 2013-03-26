@@ -20,6 +20,9 @@ struct config
 	size_t nameservers_cnt;
 
 	struct in_addr iprange[2];
+
+	uint32_t leasetime;
+	uint8_t prefixlen;
 };
 
 #define CONFIG_EMPTY {\
@@ -28,7 +31,9 @@ struct config
 		.routers_cnt = 0,\
 		.nameservers = NULL,\
 		.nameservers_cnt = 0,\
-		.iprange = {{0}, {0}}\
+		.iprange = {{0}, {0}},\
+		.leasetime = 3600,\
+		.prefixlen = 24\
 	}
 
 extern bool config_fill(struct config *cfg, struct argv *argv);

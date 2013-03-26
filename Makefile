@@ -1,7 +1,7 @@
 .PHONY: all install clean
 
 CC := gcc
-LD := gcc
+LD := $(CC)
 
 FIND ?= find
 

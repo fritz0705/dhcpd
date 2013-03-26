@@ -23,6 +23,12 @@ bool config_fill(struct config *cfg, struct argv *argv)
 			if (inet_pton(AF_INET, argv->iprange[i], &cfg->iprange[i]) != 1)
 				goto invalid_iprange_address;
 
+	if (argv->leasetime)
+		cfg->leasetime = atoi(argv->leasetime);
+
+	if (argv->prefixlen)
+		cfg->prefixlen = atoi(argv->prefixlen);
+
 	return true;
 
 	switch (1)

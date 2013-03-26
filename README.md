@@ -9,7 +9,7 @@ Usage
 
 ```shell
 make
-sqlite3 eth0.db < schema.sql
-sudo ./dhcpd -interface eth0
+sudo ./dhcpd -interface eth0 -allocate -new -iprange 192.168.0.2 192.168.0.254 \
+             -router 192.168.0.1 -nameserver 192.168.0.1
 ```
 

@@ -36,6 +36,12 @@ struct argv
 	char **nameservers;
 	size_t nameservers_cnt;
 
+	/* -prefixlen INT */
+	char *prefixlen;
+
+	/* -leasetime INT */
+	char *leasetime;
+
 	/* -allocate */
 	bool allocate;
 	/* -help */

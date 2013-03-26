@@ -73,6 +73,29 @@ static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
 	return htonl(0xFFFFFFFFU - (1 << (32 - prefixlen)) + 1);
 }
 
+static bool dump_iplist(struct in_addr *in, size_t in_cnt, char *out, size_t out_len)
+{
+	size_t n_len = INET_ADDRSTRLEN * in_cnt + in_cnt;
+	memset(out, 0, n_len);
+	if (n_len > out_len)
+		return false;
+
+	for (size_t i = 0; i < in_cnt; ++i)
+	{
+		inet_ntop(AF_INET, &in[i], out, INET_ADDRSTRLEN);
+
+		while (*out)
+			++out;
+
+		*out = ',';
+		++out;
+	}
+
+	out[n_len-1] = 0;
+
+	return true;
+}
+
 static bool parse_iplist(const char *in, struct in_addr **out, size_t *cnt)
 {
 	size_t off = 0;
@@ -129,129 +152,166 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 	sqlerr = sqlite3_step(ldb_query);
 
+	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
+	bool unalloc_lease = false;
+
 	if (sqlerr != SQLITE_ROW)
 	{
 		if (sqlerr != SQLITE_DONE)
 			goto sql_error;
+
 		sqlite3_finalize(ldb_query);
+
+		if (cfg.argv->allocate)
+		{
+			lease.routers = cfg.routers;
+			lease.routers_cnt = cfg.routers_cnt;
+			lease.nameservers = cfg.nameservers;
+			lease.nameservers_cnt = cfg.nameservers_cnt;
+			lease.leasetime = cfg.leasetime;
+			lease.prefixlen = cfg.prefixlen;
+
+			/* TODO optimize this */
+			uint32_t iprange[2] = { ntohl(cfg.iprange[0].s_addr), ntohl(cfg.iprange[1].s_addr) };
+			uint32_t ip;
+
+			sqlite3_prepare_v2(leasedb,
+				"SELECT COUNT(*) "
+				"FROM leases "
+				"WHERE address = ?;", -1, &ldb_query, NULL);
+
+			for (ip = iprange[0]; ip <= iprange[1]; ++ip)
+			{
+				lease.address.s_addr = htonl(ip);
+				char ip_str[INET_ADDRSTRLEN];
+
+				inet_ntop(AF_INET, &lease.address, ip_str, INET_ADDRSTRLEN);
+				sqlite3_bind_text(ldb_query, 1, ip_str, -1, NULL);
+
+				if (sqlite3_step(ldb_query) == SQLITE_ERROR)
+					goto sql_error;
+
+				if (sqlite3_column_int(ldb_query, 0) == 0)
+				{
+					sqlite3_finalize(ldb_query);
+					goto offer;
+				}
+
+				sqlite3_reset(ldb_query);
+			}
+
+			sqlite3_finalize(ldb_query);
+		}
 		return;
 	}
-
-	struct {
-		const char *address;
-		const char *routers;
-		const char *nameservers;
-		uint8_t prefixlen;
-		uint32_t leasetime;
-	} lease_entry = { NULL, NULL, NULL, 0, 0 };
-
-	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
-	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
-	lease_entry.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
-	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
-	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
-
-	struct in_addr address, *routers, *nameservers;
-	size_t routers_cnt, nameservers_cnt;
-	routers_cnt = 0;
-	nameservers_cnt = 0;
-	routers = NULL;
-	nameservers = NULL;
-
-	if (!inet_pton(AF_INET, lease_entry.address, &address))
-		goto invalid_lease_entry;
-
-	if (!parse_iplist(lease_entry.routers, &routers, &routers_cnt))
-		goto invalid_lease_entry;
-
-	if (!parse_iplist(lease_entry.nameservers, &nameservers, &nameservers_cnt))
-		goto invalid_lease_entry;
-
-	if (0)
+	else
 	{
-invalid_lease_entry:
-		if (routers) free(routers);
-		if (nameservers) free(nameservers);
+		struct db_lease db_lease = DB_LEASE_EMPTY;
 
-		fprintf(stderr, "Invalid lease entry for %s:\n"
-				"\tAddress: %s\n"
-				"\tRouters: %s\n"
-				"\tNameservers: %s\n"
-				"\tPrefix Length: %hhu\n"
-				"\tLease Time: %u\n",
-				msg->chaddr,
-				lease_entry.address,
-				lease_entry.routers,
-				lease_entry.nameservers,
-				lease_entry.prefixlen,
-				lease_entry.leasetime);
+		db_lease.address = (char*)sqlite3_column_text(ldb_query, 0);
+		db_lease.routers = (char*)sqlite3_column_text(ldb_query, 1);
+		db_lease.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
+		db_lease.prefixlen = sqlite3_column_int(ldb_query, 3);
+		db_lease.leasetime = sqlite3_column_int(ldb_query, 4);
+
+		if (db_lease.address == NULL)
+			goto invalid_lease_entry;
+
+		lease.leasetime = db_lease.leasetime;
+		lease.prefixlen = db_lease.prefixlen;
+
+		unalloc_lease = true;
+
+		if (!inet_pton(AF_INET, db_lease.address, &lease.address))
+			goto invalid_lease_entry;
+
+		if (db_lease.routers)
+			if (!parse_iplist(db_lease.routers, &lease.routers, &lease.routers_cnt))
+				goto invalid_lease_entry;
+
+		if (db_lease.nameservers)
+			if (!parse_iplist(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+				goto invalid_lease_entry;
+
+		if (0)
+		{
+invalid_lease_entry:
+			if (lease.routers)
+				free(lease.routers);
+			if (lease.nameservers)
+				free(lease.nameservers);
+
+			fprintf(stderr, "Invalid lease entry for %s:\n"
+					"\tAddress: %s\n"
+					"\tRouters: %s\n"
+					"\tNameservers: %s\n"
+					"\tPrefix Length: %hhu\n"
+					"\tLease Time: %u\n",
+					msg->chaddr,
+					db_lease.address,
+					db_lease.routers,
+					db_lease.nameservers,
+					db_lease.prefixlen,
+					db_lease.leasetime);
+			sqlite3_finalize(ldb_query);
+			return;
+		}
+
 		sqlite3_finalize(ldb_query);
-		return;
 	}
 
-	/* Calculate netmask value for the defined prefix length */
-	uint32_t netmask = netmask_from_prefixlen(lease_entry.prefixlen);
-
-	sqlite3_finalize(ldb_query);
-
-	/* Prepare DHCP message to send */
-	size_t send_len = DHCP_MSG_HDRLEN;
+	size_t send_len;
+offer:
+	send_len = DHCP_MSG_HDRLEN;
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
 	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
-	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
+	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = lease.address;
 
 	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
 
 	options[0] = DHCP_OPT_MSGTYPE;
 	options[1] = 1;
 	options[2] = DHCPOFFER;
-	options = DHCP_OPT_NEXT(options);
-	send_len += 3;
+	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	ARRAY_COPY((options + 2), (uint8_t*)&netmask, 4);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	ARRAY_COPY((options + 2), (uint8_t*)((uint32_t[]){netmask_from_prefixlen(lease.prefixlen)}), 4);
+	DHCP_OPT_CONT(options, send_len);
 
-	if (routers_cnt > 0)
+	if (lease.routers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_ROUTER;
-		options[1] = routers_cnt * 4;
-		for (size_t i = 0; i < routers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = routers[i];
-		options = DHCP_OPT_NEXT(options);
-		send_len += 2 + 4 * routers_cnt;
+		options[1] = lease.routers_cnt * 4;
+		for (size_t i = 0; i < lease.routers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = lease.routers[i];
+		DHCP_OPT_CONT(options, send_len);
 	}
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_LEASETIME;
 	options[1] = 4;
-	*(uint32_t*)(options + 2) = htonl(lease_entry.leasetime);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	*(uint32_t*)(options + 2) = htonl(lease.leasetime);
+	DHCP_OPT_CONT(options, send_len);
 
-	if (nameservers_cnt > 0)
+	if (lease.nameservers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_DNS;
-		options[1] = 4 * nameservers_cnt;
-		for (size_t i = 0; i < nameservers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = nameservers[i];
-		options = DHCP_OPT_NEXT(options);
-		send_len += 2 + 4 * nameservers_cnt;
+		options[1] = 4 * lease.nameservers_cnt;
+		for (size_t i = 0; i < lease.nameservers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = lease.nameservers[i];
+		DHCP_OPT_CONT(options, send_len);
 	}
 
 	*options = DHCP_OPT_END;
-	options = DHCP_OPT_NEXT(options);
-	send_len += 1;
+	DHCP_OPT_CONT(options, send_len);
 
 	err = sendto(w->fd,
 		send_buffer, send_len,
@@ -260,8 +320,13 @@ invalid_lease_entry:
 	if (err < 0)
 		dhcpd_error(0, 1, "Could not send DHCPOFFER");
 
-	if (routers) free(routers);
-	if (nameservers) free(nameservers);
+	if (unalloc_lease)
+	{
+		if (lease.routers)
+			free(lease.routers);
+		if (lease.nameservers)
+			free(lease.nameservers);
+	}
 
 	return;
 sql_error:
@@ -312,74 +377,134 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		goto sql_error;
 
 	sqlerr = sqlite3_step(ldb_query);
+
+	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
+	bool unalloc_lease = false;
+
 	if (sqlerr != SQLITE_ROW)
 	{
 		if (sqlerr != SQLITE_DONE)
 			goto sql_error;
+
 		sqlite3_finalize(ldb_query);
+
+		if (cfg.argv->allocate)
+		{
+			if (ntohl(cfg.iprange[0].s_addr) <= ntohl(requested_addr->s_addr) &&
+					ntohl(cfg.iprange[1].s_addr) >= ntohl(requested_addr->s_addr))
+			{
+				sqlerr = sqlite3_prepare_v2(leasedb,
+					"INSERT INTO leases "
+					"('address', 'routers', 'nameservers', 'prefixlen', 'leasetime', "
+					"'allocated', 'hwaddr') VALUES "
+					"(?, ?, ?, ?, ?, ?, ?);", -1, &ldb_query, NULL);
+				if (sqlerr != SQLITE_OK)
+				{
+					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+					goto nack;
+				}
+
+				lease.address = *requested_addr;
+				lease.routers = cfg.routers;
+				lease.routers_cnt = cfg.routers_cnt;
+				lease.nameservers = cfg.nameservers;
+				lease.nameservers_cnt = cfg.nameservers_cnt;
+				lease.leasetime = cfg.leasetime;
+				lease.prefixlen = cfg.prefixlen;
+
+				char routers[INET_ADDRSTRLEN * lease.routers_cnt + lease.routers_cnt];
+				dump_iplist(lease.routers, lease.routers_cnt, routers, ARRAY_LEN(routers));
+				char nameservers[INET_ADDRSTRLEN * lease.nameservers_cnt + lease.nameservers_cnt];
+				dump_iplist(lease.nameservers, lease.nameservers_cnt, nameservers, ARRAY_LEN(nameservers));
+				char address[INET_ADDRSTRLEN];
+				inet_ntop(AF_INET, &lease.address, address, INET_ADDRSTRLEN);
+				
+				sqlerr = sqlite3_bind_text(ldb_query, 1, address, -1, NULL);
+				sqlerr = sqlite3_bind_text(ldb_query, 2, routers, -1, NULL);
+				sqlerr = sqlite3_bind_text(ldb_query, 3, nameservers, -1, NULL);
+				sqlerr = sqlite3_bind_int(ldb_query, 4, lease.prefixlen);
+				sqlerr = sqlite3_bind_int(ldb_query, 5, lease.leasetime);
+				sqlerr = sqlite3_bind_int(ldb_query, 6, 1);
+				sqlerr = sqlite3_bind_text(ldb_query, 7, msg->chaddr, -1, NULL);
+
+				sqlerr = sqlite3_step(ldb_query);
+				if (sqlerr != SQLITE_DONE)
+				{
+					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+					sqlite3_finalize(ldb_query);
+					goto nack;
+				}
+
+				sqlite3_finalize(ldb_query);
+
+				goto ack;
+			}
+		}
+
 		goto nack;
 	}
-
-	struct {
-		const char *address;
-		const char *routers;
-		const char *nameservers;
-		uint8_t prefixlen;
-		uint32_t leasetime;
-	} lease_entry = { NULL, NULL, NULL, 0, 0 };
-
-	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
-	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
-	lease_entry.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
-	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
-	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
-
-	struct in_addr address, *routers, *nameservers;
-	size_t routers_cnt, nameservers_cnt;
-	routers_cnt = 0;
-	nameservers_cnt = 0;
-	routers = NULL;
-	nameservers = NULL;
-
-	if (!inet_pton(AF_INET, lease_entry.address, &address))
-		goto invalid_lease_entry;
-
-	if (!parse_iplist(lease_entry.routers, &routers, &routers_cnt))
-		goto invalid_lease_entry;
-	
-	if (!parse_iplist(lease_entry.nameservers, &nameservers, &nameservers_cnt))
-		goto invalid_lease_entry;
-
-	if (0)
+	else
 	{
+		struct db_lease db_lease = DB_LEASE_EMPTY;
+
+		db_lease.address = (char*)sqlite3_column_text(ldb_query, 0);
+		db_lease.routers = (char*)sqlite3_column_text(ldb_query, 1);
+		db_lease.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
+		db_lease.prefixlen = sqlite3_column_int(ldb_query, 3);
+		db_lease.leasetime = sqlite3_column_int(ldb_query, 4);
+
+		if (db_lease.address == NULL)
+			goto invalid_lease_entry;
+
+		lease.leasetime = db_lease.leasetime;
+		lease.prefixlen = db_lease.prefixlen;
+
+		unalloc_lease = true;
+
+		if (!inet_pton(AF_INET, db_lease.address, &lease.address))
+			goto invalid_lease_entry;
+
+		if (db_lease.routers)
+			if (!parse_iplist(db_lease.routers, &lease.routers, &lease.routers_cnt))
+				goto invalid_lease_entry;
+
+		if (db_lease.nameservers)
+			if (!parse_iplist(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+				goto invalid_lease_entry;
+
+		if (0)
+		{
 invalid_lease_entry:
-		if (routers) free(routers);
-		if (nameservers) free(nameservers);
+			if (lease.nameservers)
+				free(lease.nameservers);
+			if (lease.routers)
+				free(lease.routers);
 
-		fprintf(stderr, "Invalid lease entry for %s:\n"
-				"\tAddress: %s\n"
-				"\tRouters: %s\n"
-				"\tNameservers: %s\n"
-				"\tPrefix Length: %hhu\n"
-				"\tLease Time: %u\n",
-				msg->chaddr,
-				lease_entry.address,
-				lease_entry.routers,
-				lease_entry.nameservers,
-				lease_entry.prefixlen,
-				lease_entry.leasetime);
-		sqlite3_finalize(ldb_query);
-		goto nack;
+			fprintf(stderr, "Invalid lease entry for %s:\n"
+					"\tAddress: %s\n"
+					"\tRouters: %s\n"
+					"\tNameservers: %s\n"
+					"\tPrefix Length: %hhu\n"
+					"\tLease Time: %u\n",
+					msg->chaddr,
+					db_lease.address,
+					db_lease.routers,
+					db_lease.nameservers,
+					db_lease.prefixlen,
+					db_lease.leasetime);
+			sqlite3_finalize(ldb_query);
+			goto nack;
+		}
 	}
-
-	uint32_t netmask = netmask_from_prefixlen(lease_entry.prefixlen);
 
 	sqlite3_finalize(ldb_query);
 
-	if (memcmp(&address, requested_addr, 4) != 0)
+	if (memcmp(&lease.address, requested_addr, 4) != 0)
 	{
-		if (nameservers) free(nameservers);
-		if (routers) free(routers);
+		if (lease.nameservers)
+			free(lease.nameservers);
+		if (lease.routers)
+			free(lease.routers);
 
 		size_t send_len;
 nack:
@@ -394,12 +519,10 @@ nack:
 		options[0] = DHCP_OPT_MSGTYPE;
 		options[1] = 1;
 		options[2] = DHCPNAK;
-		options = DHCP_OPT_NEXT(options);
-		send_len += 3;
+		DHCP_OPT_CONT(options, send_len);
 
 		options[0] = DHCP_OPT_END;
-		options = DHCP_OPT_NEXT(options);
-		send_len += 1;
+		DHCP_OPT_CONT(options, send_len);
 
 		err = sendto(w->fd,
 			send_buffer, send_len,
@@ -411,64 +534,58 @@ nack:
 		return;
 	}
 
-	/* Prepare DHCP message to send */
-	size_t send_len = DHCP_MSG_HDRLEN;
+	size_t send_len;
+ack:
+	send_len = DHCP_MSG_HDRLEN;
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
 	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
-	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
+	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = lease.address;
 
 	options = DHCP_MSG_F_OPTIONS(send_buffer);
 
 	options[0] = DHCP_OPT_MSGTYPE;
 	options[1] = 1;
 	options[2] = DHCPACK;
-	options = DHCP_OPT_NEXT(options);
-	send_len += 3;
+	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	ARRAY_COPY((options + 2), (uint8_t*)&netmask, 4);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	ARRAY_COPY((options + 2), (uint8_t*)((uint32_t[]){netmask_from_prefixlen(lease.prefixlen)}), 4);
+	DHCP_OPT_CONT(options, send_len);
 
-	if (routers_cnt > 0)
+	if (lease.routers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_ROUTER;
-		options[1] = routers_cnt * 4;
-		for (size_t i = 0; i < routers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = routers[i];
-		options = DHCP_OPT_NEXT(options);
-		send_len += 2 + 4 * routers_cnt;
+		options[1] = lease.routers_cnt * 4;
+		for (size_t i = 0; i < lease.routers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = lease.routers[i];
+		DHCP_OPT_CONT(options, send_len);
 	}
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	DHCP_OPT_CONT(options, send_len);
 
 	options[0] = DHCP_OPT_LEASETIME;
 	options[1] = 4;
-	*(uint32_t*)(options + 2) = htonl(lease_entry.leasetime);
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	*(uint32_t*)(options + 2) = htonl(lease.leasetime);
+	DHCP_OPT_CONT(options, send_len);
 
-	if (nameservers_cnt > 0)
+	if (lease.nameservers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_DNS;
-		options[1] = nameservers_cnt * 4;
-		for (size_t i = 0; i < nameservers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = nameservers[i];
-		options = DHCP_OPT_NEXT(options);
-		send_len += 2 + 4 * nameservers_cnt;
+		options[1] = lease.nameservers_cnt * 4;
+		for (size_t i = 0; i < lease.nameservers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = lease.nameservers[i];
+		DHCP_OPT_CONT(options, send_len);
 	}
 
 	*options = DHCP_OPT_END;
-	options = DHCP_OPT_NEXT(options);
-	send_len += 1;
+	DHCP_OPT_CONT(options, send_len);
 
 	err = sendto(w->fd,
 		send_buffer, send_len,
@@ -477,8 +594,13 @@ nack:
 	if (err < 0)
 		dhcpd_error(0, 1, "Could not send DHCPACK");
 
-	if (routers) free(routers);
-	if (nameservers) free(nameservers);
+	if (unalloc_lease)
+	{
+		if (lease.routers)
+			free(lease.routers);
+		if (lease.nameservers)
+			free(lease.nameservers);
+	}
 
 	return;
 sql_error:

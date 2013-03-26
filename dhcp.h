@@ -65,7 +65,12 @@
 #define DHCP_OPT_F_LEN(o)  ((uint8_t*)(o+1))
 #define DHCP_OPT_F_DATA(o) ((char*)(o+2))
 
-#define DHCP_OPT_NEXT(o) ((uint8_t*)((*((uint8_t*)(o))!=255&&*((uint8_t*)(o))!=0)?(((uint8_t*)(o))+((uint8_t*)(o))[1]+2):(((uint8_t*)(o))+1)))
+#define DHCP_OPT_LEN(o) (((uint8_t*)(o))[0] != 255 && ((uint8_t*)(o))[0] != 0 ? ((uint8_t*)(o))[1] + 2 : 1)
+#define DHCP_OPT_NEXT(o) (((uint8_t*)(o))+DHCP_OPT_LEN(o))
+#define DHCP_OPT_CONT(o, l) {\
+		(l) += DHCP_OPT_LEN(o);\
+		(o) = DHCP_OPT_NEXT(o);\
+	}
 
 enum dhcp_opt_type
 {
@@ -98,7 +103,8 @@ struct dhcp_opt
 	char *data;
 };
 
-struct dhcp_msg {
+struct dhcp_msg
+{
 	uint8_t *data;
 	uint8_t *end;
 	size_t length;
@@ -114,6 +120,29 @@ struct dhcp_msg {
 	struct sockaddr *source;
 };
 
+struct dhcp_lease
+{
+	struct in_addr address;
+	struct in_addr *routers;
+	size_t routers_cnt;
+
+	struct in_addr *nameservers;
+	size_t nameservers_cnt;
+
+	uint32_t leasetime;
+	uint8_t prefixlen;
+};
+
+#define DHCP_LEASE_EMPTY {\
+		.address = {INADDR_ANY},\
+		.routers = NULL,\
+		.routers_cnt = 0,\
+		.nameservers = NULL,\
+		.nameservers_cnt = 0,\
+		.leasetime = 0,\
+		.prefixlen = 0\
+	}
+
 static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 {
 	*DHCP_MSG_F_XID(reply) = *DHCP_MSG_F_XID(original);
@@ -126,6 +155,9 @@ static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 
 static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *end)
 {
+	if (*DHCP_OPT_F_CODE(*cur) == DHCP_OPT_END)
+		return false;
+
 	if (opt != NULL)
 	{
 		*opt = (struct dhcp_opt){
@@ -133,18 +165,18 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 			.len = 0,
 			.data = NULL
 		};
-		if (*DHCP_OPT_F_CODE(*cur) != 0 && *DHCP_OPT_F_CODE(*cur) != 255)
+		if (*DHCP_OPT_F_CODE(*cur) != DHCP_OPT_STUB)
 		{
 			opt->len = *DHCP_OPT_F_LEN(*cur);
 			opt->data = DHCP_OPT_F_DATA(*cur);
 		}
 	}
 
-	if (*cur >= end)
+	/* Overflow detection */
+	if ((*cur) + DHCP_OPT_LEN(*cur) >= end)
 		return false;
+
 	*cur = DHCP_OPT_NEXT(*cur);
-	if (*cur - opt->len >= end)
-		return false;
 
 	return true;
 }
@@ -156,24 +188,52 @@ static inline void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
 		"\tOP %hhu [%s]\n"
 		"\tHTYPE %hhu HLEN %hhu\n"
 		"\tHOPS %hhu\n"
-		"\tXID %X\n"
+		"\tXID %8X\n"
 		"\tSECS %hu FLAGS %hu\n"
 		"\tCIADDR %s YIADDR %s SIADDR %s GIADDR %s\n"
 		"\tCHADDR %s\n"
-		"\tMAGIC %X\n"
-		"\tMSG TYPE %u\n",
+		"\tMAGIC %8X\n"
+		"\tMSG TYPE %s\n",
 		msg->srcaddr,
 		*DHCP_MSG_F_OP(msg->data),
 		(*DHCP_MSG_F_OP(msg->data) == 1 ? "REQUEST" : "REPLY"),
 		*DHCP_MSG_F_HTYPE(msg->data),
 		*DHCP_MSG_F_HLEN(msg->data),
 		*DHCP_MSG_F_HOPS(msg->data),
-		*DHCP_MSG_F_XID(msg->data),
-		*DHCP_MSG_F_SECS(msg->data),
-		*DHCP_MSG_F_FLAGS(msg->data),
+		ntohl(*DHCP_MSG_F_XID(msg->data)),
+		ntohl(*DHCP_MSG_F_SECS(msg->data)),
+		ntohl(*DHCP_MSG_F_FLAGS(msg->data)),
 		msg->ciaddr, msg->yiaddr, msg->siaddr, msg->giaddr,
 		msg->chaddr,
-		*DHCP_MSG_F_MAGIC(msg->data),
-		msg->type);
+		*(uint32_t*)DHCP_MSG_F_MAGIC(msg->data),
+		(msg->type == DHCPDISCOVER ? "DHCPDISCOVER" :
+		 msg->type == DHCPOFFER ? "DHCPOFFER" :
+		 msg->type == DHCPREQUEST ? "DHCPREQUEST" :
+		 msg->type == DHCPDECLINE ? "DHCPDECLINE" :
+		 msg->type == DHCPACK ? "DHCPACK" :
+		 msg->type == DHCPNAK ? "DHCPNAK" :
+		 msg->type == DHCPRELEASE ? "DHCPRELEASE" :
+		 msg->type == DHCPINFORM ? "DHCPINFORM" : "unknown"));
+
+	struct dhcp_opt cur_opt;
+	uint8_t *options = DHCP_MSG_F_OPTIONS(msg->data);
+
+	while (dhcp_opt_next(&options, &cur_opt, msg->end))
+	{
+		switch (cur_opt.code)
+		{
+			case DHCP_OPT_STUB:
+				fprintf(stream, "\tOPTION STUB\n");
+				break;
+			case DHCP_OPT_NETMASK:
+				fprintf(stream, "\tOPTION NETMASK %s\n",
+					inet_ntop(AF_INET, cur_opt.data,
+						(char[]){[INET_ADDRSTRLEN] = 0}, INET_ADDRSTRLEN));
+				break;
+			default:
+				fprintf(stream, "\tOPTION %02hhX(%hhu)\n", cur_opt.code, cur_opt.len);
+				break;
+		}
+	}
 }
 
