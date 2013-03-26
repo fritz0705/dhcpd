@@ -1,6 +1,7 @@
 /* (c) 2013 Fritz Conrad Grimpen */
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
@@ -14,12 +15,18 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <ifaddrs.h>
+#include <unistd.h>
+
+#include <sys/capability.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <ev.h>
 #include <sqlite3.h>
 
 #include "array.h"
 #include "dhcp.h"
+#include "argv.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
@@ -35,7 +42,7 @@ struct sockaddr_in broadcast = {
 uint8_t recv_buffer[RECV_BUF_LEN];
 uint8_t send_buffer[SEND_BUF_LEN];
 
-bool debug = true;
+bool debug = false;
 
 static const char *BROKEN_SOFTWARE_NOTIFICATION = 
 "#################################### ALERT ####################################\n"
@@ -141,7 +148,7 @@ invalid_lease_entry:
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
-	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
 	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
 
@@ -155,7 +162,7 @@ invalid_lease_entry:
 
 	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), (uint8_t*)&netmask, 4);
+	ARRAY_COPY((options + 2), (uint8_t*)&netmask, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
@@ -167,7 +174,7 @@ invalid_lease_entry:
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), &server_id.sin_addr, 4);
+	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
@@ -307,7 +314,7 @@ nack:
 		memset(send_buffer, 0, DHCP_MSG_LEN);
 		dhcp_msg_prepare(send_buffer, msg->data);
 
-		COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+		ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
 		uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
 
@@ -336,7 +343,7 @@ nack:
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	dhcp_msg_prepare(send_buffer, msg->data);
 
-	COPY_ARRAY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &server_id.sin_addr, 4);
 
 	*((struct in_addr *)DHCP_MSG_F_YIADDR(send_buffer)) = address;
 
@@ -350,7 +357,7 @@ nack:
 
 	options[0] = DHCP_OPT_NETMASK;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), (uint8_t*)&netmask, 4);
+	ARRAY_COPY((options + 2), (uint8_t*)&netmask, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
@@ -362,7 +369,7 @@ nack:
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
-	COPY_ARRAY((options + 2), &server_id.sin_addr, 4);
+	ARRAY_COPY((options + 2), &server_id.sin_addr, 4);
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
@@ -527,20 +534,111 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 
 int main(int argc, char **argv)
 {
+	struct argv argv_cfg;
+	argv_defaults(&argv_cfg);
+
+	if (!argv_parse(argc, argv, &argv_cfg))
+	{
+		if (argv_cfg.argerror == -1)
+			error(1, 0, "Unexpected argument list end");
+
+		error(1, 0, "Unexpected argument %s", argv_cfg.argv[argv_cfg.argerror]);
+	}
+
+	if (argv_cfg.help || argv_cfg.interface == NULL)
+	{
+		printf("%s [-help] [-version] [-debug] [-user UID] [-group GID]\n"
+			"\t[-interface IF] [-db FILE]\n"
+			"\t[-allocate] [-iprange IP IP] [-router IP]... [-nameserver IP]...\n",
+			argv_cfg.arg0);
+		exit(0);
+	}
+
+	if (argv_cfg.user != NULL)
+	{
+		/* XXX Broken at the moment */
+		uid_t uid = 0;
+		gid_t gid = 0;
+
+		struct passwd *pwent;
+
+		pwent = getpwnam(argv_cfg.user);
+		if (pwent == NULL)
+		{
+			pwent = getpwuid(atoi(argv_cfg.user));
+			if (pwent == NULL)
+				error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.user);
+		}
+
+		uid = pwent->pw_uid;
+		gid = pwent->pw_gid;
+
+		if (argv_cfg.group != NULL)
+		{
+			struct group *grent;
+			
+			grent = getgrnam(argv_cfg.group);
+			if (grent == NULL)
+			{
+				grent = getgrgid(atoi(argv_cfg.group));
+				if (grent == NULL)
+					error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.group);
+			}
+
+			gid = grent->gr_gid;
+		}
+
+		cap_t caps;
+		caps = cap_init();
+
+		cap_value_t cap_presetuid[] = {
+			CAP_NET_BIND_SERVICE,
+			CAP_NET_RAW,
+			CAP_NET_ADMIN,
+			CAP_SETUID,
+			CAP_SETGID
+		};
+		cap_value_t cap_postsetuid[] = {
+			CAP_NET_BIND_SERVICE,
+			CAP_NET_RAW,
+			CAP_NET_ADMIN
+		};
+
+		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
+		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
+		cap_set_flag(caps, CAP_INHERITABLE, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
+
+		cap_set_proc(caps);
+
+		setgid(gid);
+		setuid(uid);
+
+		cap_clear(caps);
+		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
+		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
+		cap_set_flag(caps, CAP_INHERITABLE, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
+		cap_set_proc(caps);
+
+		cap_free(caps);
+	}
+
 	broadcast.sin_port = htons(68);
-	if (argc != 2)
-		error(1, 0, "Usage: dhcpd INTERFACE");
 
-	char *if_name = argv[1];
-	unsigned int interface = if_nametoindex(if_name);
-	if (interface == 0)
-		error(1, errno, if_name);
+	if (if_nametoindex(argv_cfg.interface) == 0)
+		error(1, errno, argv_cfg.interface);
 
-	char db_file[strlen(if_name) + sizeof(".db") + 1];
-	stpcpy(stpcpy(db_file, if_name), ".db");
-	db_file[-1] = 0;
+	if (argv_cfg.db == NULL)
+	{
+		size_t len = strlen(argv_cfg.interface) + sizeof(".db") + 1;
+		argv_cfg.db = malloc(len);
+		stpcpy(stpcpy(argv_cfg.db, argv_cfg.interface), ".db");
+		argv_cfg.db[len-1] = 0;
+	}
 
-	if (sqlite3_open(db_file, &leasedb) != SQLITE_OK)
+	if (argv_cfg.debug)
+		debug = true;
+
+	if (sqlite3_open(argv_cfg.db, &leasedb) != SQLITE_OK)
 		error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
 
 	int sock;
@@ -572,13 +670,16 @@ int main(int argc, char **argv)
 
 	freeifaddrs(ifaddrs);
 
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int)) != 0)
+		error(1, errno, "Could not set socket to reuse address");
+
 	if (bind(sock, (const struct sockaddr *)&bind_addr, sizeof(struct sockaddr_in)) < 0)
 		error(1, errno, "Could not bind to 0.0.0.0:67");
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (int[]){1}, sizeof(int)) != 0)
 		error(1, errno, "Could not set broadcast socket option");
-	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, if_name, strlen(if_name)) != 0)
-		error(1, errno, "Could not bind to device %s", if_name);
+	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, argv_cfg.interface, strlen(argv_cfg.interface)) != 0)
+		error(1, errno, "Could not bind to device %s", argv_cfg.interface);
 
 	struct ev_loop *loop = EV_DEFAULT;
 

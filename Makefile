@@ -2,14 +2,14 @@
 
 CC := gcc
 LD := gcc
-LDFLAGS := -lev -lsqlite3 $(LDFLAGS)
+LDFLAGS := -lev -lsqlite3 -lcap $(LDFLAGS)
 CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -g -pedantic $(CFLAGS)
 
 all: dhcpd dhcpd6
 
 dhcpd6:
 
-dhcpd: dhcpd.o
+dhcpd: dhcpd.o argv.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
@@ -20,5 +20,6 @@ clean:
 	$(RM) dhcpd6
 	$(RM) *.o
 
-dhcpd.c: dhcp.h array.h
+dhcpd.c: dhcp.h array.h argv.h
+argv.c: argv.h
 

@@ -119,8 +119,8 @@ static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 	*DHCP_MSG_F_HTYPE(reply) = *DHCP_MSG_F_HTYPE(original);
 	*DHCP_MSG_F_HLEN(reply) = *DHCP_MSG_F_HLEN(original);
 	*DHCP_MSG_F_OP(reply) = (*DHCP_MSG_F_OP(reply) == 2 ? 1 : 2);
-	COPY_ARRAY(DHCP_MSG_F_MAGIC(reply), DHCP_MSG_MAGIC, 4);
-	COPY_ARRAY(DHCP_MSG_F_CHADDR(reply), DHCP_MSG_F_CHADDR(original), 16);
+	ARRAY_COPY(DHCP_MSG_F_MAGIC(reply), DHCP_MSG_MAGIC, 4);
+	ARRAY_COPY(DHCP_MSG_F_CHADDR(reply), DHCP_MSG_F_CHADDR(original), 16);
 }
 
 static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *end)
