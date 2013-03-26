@@ -353,15 +353,15 @@ static void stress_inval_lenmsgs(int sock)
 
 	send_len += 6;
 
-	while (1)
+	for (uint32_t i = 0; ;++i)
 	{
-		val = val - (val & 0xf0f0f0f0) + (val ^ 0xff);
+		val = ((val ^ 16777619) >> (i % 8)) | (i % 65535);
 
 		*DHCP_MSG_F_XID(send_buffer) = val;
 		ARRAY_COPY(DHCP_MSG_F_CHADDR(send_buffer), &val, sizeof val);
 
-		sendto(sock, send_buffer, send_len, 0,
-			&cfg.remote, sizeof cfg.remote);
+		sendto(sock, send_buffer, send_len, MSG_DONTWAIT,
+			(struct sockaddr *)&cfg.remote, sizeof cfg.remote);
 	}
 }
 
