@@ -68,25 +68,34 @@ static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
 
 static bool parse_iplist(const char *in, struct in_addr **out, size_t *cnt)
 {
-	uint_least8_t off = 0;
-	while (1)
+	size_t off = 0;
+	char addr[INET_ADDRSTRLEN];
+	memset(addr, 0, INET_ADDRSTRLEN);
+	while (*in && off < INET_ADDRSTRLEN-1)
 	{
-		if (in[off] == 0)
-			break;
-		if (in[off] == ',')
-			++off;
+		addr[off++] = *(in++);
 
-		*out = realloc(*out, sizeof **out * ++(*cnt));
-		if (!inet_pton(AF_INET, in + off, &(*out)[(*cnt)-1]))
+		if (*in == ',' || *in == 0)
 		{
-			free(*out);
-			*out = NULL;
-			*cnt = 0;
-			return false;
-		}
+			*out = realloc(*out, sizeof **out * ++(*cnt));
+			if (inet_pton(AF_INET, addr, &(*out)[(*cnt)-1]) == 0)
+				goto return_false;
 
-		while (in[off] != 0 && in[off] != ',')
-			++off;
+			off = 0;
+			memset(addr, 0, INET_ADDRSTRLEN);
+
+			if (*in != 0)
+				++in;
+		}
+	}
+
+	if (!(off < INET_ADDRSTRLEN-1))
+	{
+return_false:
+		free(*out);
+		*out = NULL;
+		*cnt = 0;
+		return false;
 	}
 
 	return true;
@@ -154,8 +163,8 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	if (0)
 	{
 invalid_lease_entry:
-		if (routers != NULL) free(routers);
-		if (nameservers != NULL) free(nameservers);
+		if (routers) free(routers);
+		if (nameservers) free(nameservers);
 
 		fprintf(stderr, "Invalid lease entry for %s:\n"
 				"\tAddress: %s\n"
@@ -244,8 +253,8 @@ invalid_lease_entry:
 	if (err < 0)
 		error(0, 1, "Could not send DHCPOFFER");
 
-	if (routers != NULL) free(routers);
-	if (nameservers != NULL) free(nameservers);
+	if (routers) free(routers);
+	if (nameservers) free(nameservers);
 
 	return;
 sql_error:
@@ -337,8 +346,8 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	if (0)
 	{
 invalid_lease_entry:
-		if (routers != NULL) free(routers);
-		if (nameservers != NULL) free(nameservers);
+		if (routers) free(routers);
+		if (nameservers) free(nameservers);
 
 		fprintf(stderr, "Invalid lease entry for %s:\n"
 				"\tAddress: %s\n"
@@ -461,9 +470,8 @@ nack:
 	if (err < 0)
 		error(0, 1, "Could not send DHCPACK");
 
-	if (routers != NULL) free(routers);
-	if (nameservers != NULL) free(nameservers);
-
+	if (routers) free(routers);
+	if (nameservers) free(nameservers);
 
 	return;
 sql_error:
