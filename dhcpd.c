@@ -91,7 +91,8 @@ static bool dump_iplist(struct in_addr *in, size_t in_cnt, char *out, size_t out
 		++out;
 	}
 
-	out[n_len-1] = 0;
+	*out = 0;
+	//out[n_len-1] = 0;
 
 	return true;
 }
