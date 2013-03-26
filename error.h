@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static inline void dhcpd_error(int _exit, int _errno, const char *fmt, ...)
 {

@@ -1,6 +1,7 @@
 *.db
 *.o
 dhcpd
+dhcpstress
 tools/dump-schema
 schema.sql
 

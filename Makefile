@@ -16,7 +16,7 @@ ifdef DEBUG
 override CFLAGS += -O0 -g
 endif
 
-all: dhcpd schema.sql
+all: dhcpd dhcpstress schema.sql
 
 schema.sql: tools/dump-schema
 	./tools/dump-schema > $@
@@ -25,6 +25,9 @@ tools/dump-schema: tools/dump-schema.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o
+	$(LD) $(LDFLAGS) -o $@ $^
+
+dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
