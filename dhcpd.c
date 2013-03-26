@@ -591,7 +591,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 	if (recvd < 0)
 		return;
 	/* Detect too small messages */
-	if (recvd < 241)
+	if (recvd < DHCP_MSG_HDRLEN)
 		return;
 	/* Check magic value */
 	uint8_t *magic = DHCP_MSG_F_MAGIC(recv_buffer);

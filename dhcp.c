@@ -72,6 +72,11 @@ void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
 					inet_ntop(AF_INET, cur_opt.data,
 						(char[]){[INET_ADDRSTRLEN] = 0}, INET_ADDRSTRLEN));
 				break;
+			case DHCP_OPT_REQIPADDR:
+				fprintf(stream, "\tOPTION REQIPADDR %s\n",
+					inet_ntop(AF_INET, cur_opt.data,
+						(char[]){[INET_ADDRSTRLEN] = 0}, INET_ADDRSTRLEN));
+				break;
 			default:
 				fprintf(stream, "\tOPTION %02hhX(%hhu)\n", cur_opt.code, cur_opt.len);
 				break;
