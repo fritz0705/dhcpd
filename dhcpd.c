@@ -9,7 +9,6 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/prctl.h>
 
 #include <netinet/in.h>
 #include <net/if.h>
@@ -19,6 +18,7 @@
 
 #ifdef __linux__
 #include <sys/capability.h>
+#include <sys/prctl.h>
 #endif
 
 #include <pwd.h>
