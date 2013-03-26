@@ -66,6 +66,32 @@ static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
 	return htonl(0xFFFFFFFFU - (1 << (32 - prefixlen)) + 1);
 }
 
+static bool parse_iplist(const char *in, struct in_addr **out, size_t *cnt)
+{
+	uint_least8_t off = 0;
+	while (1)
+	{
+		if (in[off] == 0)
+			break;
+		if (in[off] == ',')
+			++off;
+
+		*out = realloc(*out, sizeof **out * ++(*cnt));
+		if (!inet_pton(AF_INET, in + off, &(*out)[(*cnt)-1]))
+		{
+			free(*out);
+			*out = NULL;
+			*cnt = 0;
+			return false;
+		}
+
+		while (in[off] != 0 && in[off] != ',')
+			++off;
+	}
+
+	return true;
+}
+
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr, err;
@@ -109,20 +135,28 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
 	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
 
-	struct in_addr address, routers[4], nameservers[4];
+	struct in_addr address, *routers, *nameservers;
+	size_t routers_cnt, nameservers_cnt;
+	routers_cnt = 0;
+	nameservers_cnt = 0;
+	routers = NULL;
+	nameservers = NULL;
 
 	if (!inet_pton(AF_INET, lease_entry.address, &address))
 		goto invalid_lease_entry;
 
-	if (lease_entry.routers && !inet_pton(AF_INET, lease_entry.routers, routers))
+	if (!parse_iplist(lease_entry.routers, &routers, &routers_cnt))
 		goto invalid_lease_entry;
 
-	if (lease_entry.nameservers && !inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+	if (!parse_iplist(lease_entry.nameservers, &nameservers, &nameservers_cnt))
 		goto invalid_lease_entry;
 
 	if (0)
 	{
 invalid_lease_entry:
+		if (routers != NULL) free(routers);
+		if (nameservers != NULL) free(nameservers);
+
 		fprintf(stderr, "Invalid lease entry for %s:\n"
 				"\tAddress: %s\n"
 				"\tRouters: %s\n"
@@ -167,13 +201,14 @@ invalid_lease_entry:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	if (*routers != NULL)
+	if (routers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_ROUTER;
-		options[1] = 4;
-		*(struct in_addr *)(options + 2) = routers[0];
+		options[1] = routers_cnt * 4;
+		for (size_t i = 0; i < routers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = routers[i];
 		options = DHCP_OPT_NEXT(options);
-		send_len += 6;
+		send_len += 2 + 4 * routers_cnt;
 	}
 
 	options[0] = DHCP_OPT_SERVERID;
@@ -188,13 +223,14 @@ invalid_lease_entry:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	if (*nameservers != NULL)
+	if (nameservers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_DNS;
-		options[1] = 4;
-		*(struct in_addr *)(options + 2) = nameservers[0];
+		options[1] = 4 * nameservers_cnt;
+		for (size_t i = 0; i < nameservers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = nameservers[i];
 		options = DHCP_OPT_NEXT(options);
-		send_len += 6;
+		send_len += 2 + 4 * nameservers_cnt;
 	}
 
 	*options = DHCP_OPT_END;
@@ -207,6 +243,9 @@ invalid_lease_entry:
 
 	if (err < 0)
 		error(0, 1, "Could not send DHCPOFFER");
+
+	if (routers != NULL) free(routers);
+	if (nameservers != NULL) free(nameservers);
 
 	return;
 sql_error:
@@ -279,20 +318,28 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	lease_entry.prefixlen = sqlite3_column_int(ldb_query, 3);
 	lease_entry.leasetime = sqlite3_column_int(ldb_query, 4);
 
-	struct in_addr address, routers[4], nameservers[4];
+	struct in_addr address, *routers, *nameservers;
+	size_t routers_cnt, nameservers_cnt;
+	routers_cnt = 0;
+	nameservers_cnt = 0;
+	routers = NULL;
+	nameservers = NULL;
 
 	if (!inet_pton(AF_INET, lease_entry.address, &address))
 		goto invalid_lease_entry;
 
-	if (lease_enty.routers && !inet_pton(AF_INET, lease_entry.routers, routers))
+	if (!parse_iplist(lease_entry.routers, &routers, &routers_cnt))
 		goto invalid_lease_entry;
-
-	if (lease_entry.nameservers && !inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+	
+	if (!parse_iplist(lease_entry.nameservers, &nameservers, &nameservers_cnt))
 		goto invalid_lease_entry;
 
 	if (0)
 	{
 invalid_lease_entry:
+		if (routers != NULL) free(routers);
+		if (nameservers != NULL) free(nameservers);
+
 		fprintf(stderr, "Invalid lease entry for %s:\n"
 				"\tAddress: %s\n"
 				"\tRouters: %s\n"
@@ -315,6 +362,9 @@ invalid_lease_entry:
 
 	if (memcmp(&address, requested_addr, 4) != 0)
 	{
+		if (nameservers) free(nameservers);
+		if (routers) free(routers);
+
 		size_t send_len;
 nack:
 		send_len = DHCP_MSG_HDRLEN;
@@ -368,13 +418,14 @@ nack:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	if (*routers)
+	if (routers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_ROUTER;
-		options[1] = 4;
-		*(struct in_addr *)(options + 2) = routers[0];
+		options[1] = routers_cnt * 4;
+		for (size_t i = 0; i < routers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = routers[i];
 		options = DHCP_OPT_NEXT(options);
-		send_len += 6;
+		send_len += 2 + 4 * routers_cnt;
 	}
 
 	options[0] = DHCP_OPT_SERVERID;
@@ -389,13 +440,14 @@ nack:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	if (*nameservers)
+	if (nameservers_cnt > 0)
 	{
 		options[0] = DHCP_OPT_DNS;
-		options[1] = 4;
-		*(struct in_addr *)(options + 2) = nameservers[0];
+		options[1] = nameservers_cnt * 4;
+		for (size_t i = 0; i < nameservers_cnt; ++i)
+			*(struct in_addr *)(options + 2 + (i * 4)) = nameservers[i];
 		options = DHCP_OPT_NEXT(options);
-		send_len += 6;
+		send_len += 2 + 4 * nameservers_cnt;
 	}
 
 	*options = DHCP_OPT_END;
@@ -408,6 +460,10 @@ nack:
 
 	if (err < 0)
 		error(0, 1, "Could not send DHCPACK");
+
+	if (routers != NULL) free(routers);
+	if (nameservers != NULL) free(nameservers);
+
 
 	return;
 sql_error:
