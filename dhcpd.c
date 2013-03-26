@@ -624,7 +624,7 @@ static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 static void req_cb(EV_P_ ev_io *w, int revents)
 {
 	struct sockaddr_in src_addr;
-	socklen_t src_addrlen;
+	socklen_t src_addrlen = AF_INET;
 
 	/* Receive data from socket */
 	ssize_t recvd = recvfrom(
