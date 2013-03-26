@@ -4,14 +4,16 @@
 #include <net/if.h>
 #include <errno.h>
 
+#include <arpa/inet.h>
+
 #define SEND_BUF_LEN 4096
 
-uint8_t *send_buffer[SEND_BUF_LEN];
+uint8_t send_buffer[SEND_BUF_LEN];
 
 int main(int argc, char **argv)
 {
 	if (argc < 2)
-		dhcpd_error(1, 0, "Usage: dhcpstress INTERFACE");
+		dhcpd_error(1, 0, "Usage: dhcpstress INTERFACE [IP]");
 
 	char *interface = argv[1];
 
@@ -24,11 +26,14 @@ int main(int argc, char **argv)
 		.sin_addr = {INADDR_ANY}
 	};
 	
-	struct sockaddr_in bcast_addr = {
+	struct sockaddr_in server_addr = {
 		.sin_family = AF_INET,
 		.sin_port = htons(67),
 		.sin_addr = {INADDR_BROADCAST}
 	};
+
+	if (argc >= 3)
+		inet_pton(AF_INET, argv[2], &server_addr.sin_addr);
 
 	int sock;
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -49,6 +54,11 @@ int main(int argc, char **argv)
 	send_len = DHCP_MSG_HDRLEN;
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 
+	*DHCP_MSG_F_OP(send_buffer) = 1;
+	*DHCP_MSG_F_HTYPE(send_buffer) = 1;
+	*DHCP_MSG_F_HLEN(send_buffer) = 6;
+	ARRAY_COPY(DHCP_MSG_F_MAGIC(send_buffer), DHCP_MSG_MAGIC, 4);
+
 	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
 	options[0] = DHCP_OPT_MSGTYPE;
 	options[1] = 1;
@@ -60,7 +70,11 @@ int main(int argc, char **argv)
 	options += 2;
 	send_len += 2;
 
+	options[0] = DHCP_OPT_END;
+	DHCP_OPT_CONT(options, send_len);
+
 	while (1)
 		sendto(sock, send_buffer, send_len, MSG_DONTWAIT,
-			(struct sockaddr *)&bcast_addr, sizeof bcast_addr);
+			(struct sockaddr *)&server_addr, sizeof server_addr);
 }
+
