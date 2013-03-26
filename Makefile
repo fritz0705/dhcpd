@@ -25,6 +25,6 @@ clean:
 	$(RM) dhcpd6
 	$(RM) *.o
 
-dhcpd.c: dhcp.h array.h argv.h
+dhcpd.c: dhcp.h array.h argv.h error.h
 argv.c: argv.h
 

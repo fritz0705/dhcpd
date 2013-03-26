@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
-#include <error.h>
 #include <errno.h>
 
 #include <sys/types.h>
@@ -28,6 +27,7 @@
 #include "array.h"
 #include "dhcp.h"
 #include "argv.h"
+#include "error.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
@@ -112,7 +112,7 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
 	if (sqlerr != SQLITE_OK)
 	{
-		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 		return;
 	}
 
@@ -251,7 +251,7 @@ invalid_lease_entry:
 		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
 	if (err < 0)
-		error(0, 1, "Could not send DHCPOFFER");
+		dhcpd_error(0, 1, "Could not send DHCPOFFER");
 
 	if (routers) free(routers);
 	if (nameservers) free(nameservers);
@@ -259,7 +259,7 @@ invalid_lease_entry:
 	return;
 sql_error:
 
-	error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	sqlite3_finalize(ldb_query);
 }
 
@@ -296,7 +296,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
 	if (sqlerr != SQLITE_OK)
 	{
-		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 		return;
 	}
 
@@ -399,7 +399,7 @@ nack:
 			MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
 		if (err < 0)
-			error(0, 1, "Could not send DHCPNAK");
+			dhcpd_error(0, 1, "Could not send DHCPNAK");
 		
 		return;
 	}
@@ -468,7 +468,7 @@ nack:
 		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
 	if (err < 0)
-		error(0, 1, "Could not send DHCPACK");
+		dhcpd_error(0, 1, "Could not send DHCPACK");
 
 	if (routers) free(routers);
 	if (nameservers) free(nameservers);
@@ -476,7 +476,7 @@ nack:
 	return;
 sql_error:
 
-	error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	sqlite3_finalize(ldb_query);
 }
 
@@ -622,9 +622,10 @@ int main(int argc, char **argv)
 	if (!argv_parse(argc, argv, &argv_cfg))
 	{
 		if (argv_cfg.argerror == -1)
-			error(1, 0, "Unexpected argument list end");
-
-		error(1, 0, "Unexpected argument %s", argv_cfg.argv[argv_cfg.argerror]);
+			dhcpd_error(1, 0, "Unexpected argument list end");
+		else
+			dhcpd_error(1, 0, "Unexpected argument %s", argv_cfg.argv[argv_cfg.argerror]);
+		exit(1);
 	}
 
 	if (argv_cfg.help || argv_cfg.interface == NULL)
@@ -648,7 +649,7 @@ int main(int argc, char **argv)
 		{
 			pwent = getpwuid(atoi(argv_cfg.user));
 			if (pwent == NULL)
-				error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.user);
+				dhcpd_error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.user);
 		}
 
 		uid = pwent->pw_uid;
@@ -663,7 +664,7 @@ int main(int argc, char **argv)
 			{
 				grent = getgrgid(atoi(argv_cfg.group));
 				if (grent == NULL)
-					error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.group);
+					dhcpd_error(1, errno, "Could not find user identified by \"%s\"", argv_cfg.group);
 			}
 
 			gid = grent->gr_gid;
@@ -712,7 +713,7 @@ int main(int argc, char **argv)
 	memset(recv_buffer, 0, ARRAY_LEN(recv_buffer));
 
 	if (if_nametoindex(argv_cfg.interface) == 0)
-		error(1, errno, argv_cfg.interface);
+		dhcpd_error(1, errno, argv_cfg.interface);
 
 	bool alloc_db = false;
 
@@ -729,11 +730,11 @@ int main(int argc, char **argv)
 		debug = true;
 
 	if (sqlite3_open(argv_cfg.db, &leasedb) != SQLITE_OK)
-		error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
+		dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
 
 	int sock;
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
-		error(1, errno, "Could not create socket");
+		dhcpd_error(1, errno, "Could not create socket");
 
 	struct sockaddr_in bind_addr = {
 		.sin_family = AF_INET,
@@ -744,7 +745,7 @@ int main(int argc, char **argv)
 	struct ifaddrs *ifaddrs, *ifa;
 
 	if (getifaddrs(&ifaddrs) == -1)
-		error(1, errno, "Could not get interface information");
+		dhcpd_error(1, errno, "Could not get interface information");
 
 	for (ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next)
 	{
@@ -761,15 +762,15 @@ int main(int argc, char **argv)
 	freeifaddrs(ifaddrs);
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int)) != 0)
-		error(1, errno, "Could not set socket to reuse address");
+		dhcpd_error(1, errno, "Could not set socket to reuse address");
 
 	if (bind(sock, (const struct sockaddr *)&bind_addr, sizeof(struct sockaddr_in)) < 0)
-		error(1, errno, "Could not bind to 0.0.0.0:67");
+		dhcpd_error(1, errno, "Could not bind to 0.0.0.0:67");
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (int[]){1}, sizeof(int)) != 0)
-		error(1, errno, "Could not set broadcast socket option");
+		dhcpd_error(1, errno, "Could not set broadcast socket option");
 	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, argv_cfg.interface, strlen(argv_cfg.interface)) != 0)
-		error(1, errno, "Could not bind to device %s", argv_cfg.interface);
+		dhcpd_error(1, errno, "Could not bind to device %s", argv_cfg.interface);
 
 	struct ev_loop *loop = EV_DEFAULT;
 
@@ -786,7 +787,7 @@ int main(int argc, char **argv)
 
 	if (sqlite3_close(leasedb) != SQLITE_OK)
 	{
-		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	}
 
 	argv_free(&argv_cfg);
