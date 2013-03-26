@@ -2,8 +2,13 @@
 
 CC := gcc
 LD := gcc
-LDFLAGS := -lev -lsqlite3 -lcap $(LDFLAGS)
-CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -g -pedantic $(CFLAGS)
+
+override LDFLAGS := -lev -lsqlite3 -lcap $(LDFLAGS)
+override CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -pedantic $(CFLAGS)
+
+ifdef DEBUG
+override CFLAGS += -O0 -g
+endif
 
 all: dhcpd dhcpd6
 
