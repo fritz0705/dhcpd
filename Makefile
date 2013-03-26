@@ -3,7 +3,11 @@
 CC := gcc
 LD := gcc
 
-override LDFLAGS := -lev -lsqlite3 -lcap $(LDFLAGS)
+ifeq ($(shell uname),Linux)
+_L_CAP = -lcap
+endif
+
+override LDFLAGS := -lev -lsqlite3 $(_L_CAP) $(LDFLAGS)
 override CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -pedantic $(CFLAGS)
 
 ifdef DEBUG
