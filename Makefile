@@ -39,6 +39,8 @@ clean:
 dhcpd.o: dhcp.h array.h argv.h error.h db.h config.h
 argv.o: argv.h
 config.o: config.h
-config.h: argv.h
 tools/dump-schema.o: db.h
+
+config.h: argv.h
+dhcp.h: array.h
 
