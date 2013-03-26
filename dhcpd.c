@@ -776,8 +776,10 @@ int main(int argc, char **argv)
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (int[]){1}, sizeof(int)) != 0)
 		dhcpd_error(1, errno, "Could not set broadcast socket option");
+#ifdef __linux__
 	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, argv_cfg.interface, strlen(argv_cfg.interface)) != 0)
 		dhcpd_error(1, errno, "Could not bind to device %s", argv_cfg.interface);
+#endif
 
 	struct ev_loop *loop = EV_DEFAULT;
 
