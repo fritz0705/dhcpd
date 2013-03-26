@@ -17,7 +17,10 @@
 #include <ifaddrs.h>
 #include <unistd.h>
 
+#ifdef __linux__
 #include <sys/capability.h>
+#endif
+
 #include <pwd.h>
 #include <grp.h>
 
@@ -639,6 +642,7 @@ int main(int argc, char **argv)
 
 	if (argv_cfg.user != NULL)
 	{
+#ifdef __linux__
 		uid_t uid = 0;
 		gid_t gid = 0;
 
@@ -704,6 +708,9 @@ int main(int argc, char **argv)
 		cap_set_proc(caps);
 
 		cap_free(caps);
+#else
+		dhcpd_error(1, 0, "Can only drop privileges on Linux");
+#endif
 	}
 
 	/* Set client IP address */
