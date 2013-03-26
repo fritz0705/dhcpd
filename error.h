@@ -2,8 +2,9 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-static inline void dhcpd_error(int exit, int _errno, char *fmt, ...)
+static inline void dhcpd_error(int _exit, int _errno, char *fmt, ...)
 {
 	char error[512];
 	error[511] = 0;
@@ -23,5 +24,8 @@ static inline void dhcpd_error(int exit, int _errno, char *fmt, ...)
 
 	fputs(error, stderr);
 	fputc('\n', stderr);
+
+	if (_exit > 0)
+		exit(_exit);
 }
 
