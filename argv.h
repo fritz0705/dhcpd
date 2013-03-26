@@ -52,5 +52,11 @@ extern void argv_defaults(struct argv *opt);
 extern bool argv_parse(int argc, char **argv, struct argv *out);
 
 /* Free any dynamic allocated memory in the supplied struct */
-extern void argv_free(struct argv *out);
+static inline void argv_free(struct argv *out)
+{
+	if (out->routers)
+		out->routers = argv_realloc(out->routers, out->routers_cnt = 0);
+	if (out->nameservers)
+		out->nameservers = argv_realloc(out->nameservers, out->nameservers_cnt = 0);
+}
 

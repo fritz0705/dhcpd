@@ -609,6 +609,11 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
+static void sigint_cb(EV_P_ ev_signal *sig, int revents)
+{
+	ev_break(EV_A_ EVBREAK_ALL);
+}
+
 int main(int argc, char **argv)
 {
 	struct argv argv_cfg;
@@ -700,10 +705,16 @@ int main(int argc, char **argv)
 		cap_free(caps);
 	}
 
+	/* Set client IP address */
 	broadcast.sin_port = htons(68);
+	/* Clear IO buffers */
+	memset(send_buffer, 0, ARRAY_LEN(send_buffer));
+	memset(recv_buffer, 0, ARRAY_LEN(recv_buffer));
 
 	if (if_nametoindex(argv_cfg.interface) == 0)
 		error(1, errno, argv_cfg.interface);
+
+	bool alloc_db = false;
 
 	if (argv_cfg.db == NULL)
 	{
@@ -711,6 +722,7 @@ int main(int argc, char **argv)
 		argv_cfg.db = malloc(len);
 		stpcpy(stpcpy(argv_cfg.db, argv_cfg.interface), ".db");
 		argv_cfg.db[len-1] = 0;
+		alloc_db = true;
 	}
 
 	if (argv_cfg.debug)
@@ -762,10 +774,25 @@ int main(int argc, char **argv)
 	struct ev_loop *loop = EV_DEFAULT;
 
 	ev_io read_watch;
+	ev_signal sigint_watch;
 
 	ev_io_init(&read_watch, req_cb, sock, EV_READ);
 	ev_io_start(loop, &read_watch);
 
+	ev_signal_init(&sigint_watch, sigint_cb, SIGINT);
+	ev_signal_start(loop, &sigint_watch);
+
 	ev_run(loop, 0);
+
+	if (sqlite3_close(leasedb) != SQLITE_OK)
+	{
+		error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	}
+
+	argv_free(&argv_cfg);
+	if (alloc_db)
+		free(argv_cfg.db);
+
+	exit(0);
 }
 
