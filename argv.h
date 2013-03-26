@@ -44,6 +44,8 @@ struct argv
 	bool version;
 	/* -debug */
 	bool debug;
+	/* -new */
+	bool _new;
 };
 
 extern void *(*argv_realloc)(void*, size_t);

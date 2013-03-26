@@ -31,6 +31,7 @@
 #include "dhcp.h"
 #include "argv.h"
 #include "error.h"
+#include "db.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
@@ -719,6 +720,9 @@ int main(int argc, char **argv)
 	memset(send_buffer, 0, ARRAY_LEN(send_buffer));
 	memset(recv_buffer, 0, ARRAY_LEN(recv_buffer));
 
+	if (argv_cfg._new && !argv_cfg.allocate)
+		dhcpd_error(0, 0, "Hint: -new doesn't make any sense without -allocate");
+
 	if (if_nametoindex(argv_cfg.interface) == 0)
 		dhcpd_error(1, errno, argv_cfg.interface);
 
@@ -738,6 +742,9 @@ int main(int argc, char **argv)
 
 	if (sqlite3_open(argv_cfg.db, &leasedb) != SQLITE_OK)
 		dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
+
+	if (argv_cfg._new)
+		db_init(leasedb);
 
 	int sock;
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)

@@ -45,7 +45,8 @@ void argv_defaults(struct argv *out)
 		.allocate = false,
 		.help = false,
 		.version = false,
-		.debug = false
+		.debug = false,
+		._new = false
 	};
 }
 
@@ -85,6 +86,8 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 					out->version = true;
 				else if (!strcmp(arg, "-debug"))
 					out->debug = true;
+				else if (!strcmp(arg, "-new"))
+					out->_new = true;
 				else
 				{
 					out->argerror = i;

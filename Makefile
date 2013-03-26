@@ -3,6 +3,8 @@
 CC := gcc
 LD := gcc
 
+FIND ?= find
+
 ifeq ($(shell uname),Linux)
 _L_CAP = -lcap
 endif
@@ -14,21 +16,27 @@ ifdef DEBUG
 override CFLAGS += -O0 -g
 endif
 
-all: dhcpd dhcpd6
+all: dhcpd schema.sql
 
-dhcpd6:
+schema.sql: tools/dump-schema
+	./tools/dump-schema > $@
+
+tools/dump-schema: tools/dump-schema.o
+	$(LD) $(LDFLAGS) -o $@ $^
 
 dhcpd: dhcpd.o argv.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	$(RM) dhcpd
-	$(RM) dhcpd6
-	$(RM) *.o
+	$(RM) tools/dump-schema
+	$(RM) schema.sql
+	$(FIND) ./ -name '*.o' -delete
 
-dhcpd.c: dhcp.h array.h argv.h error.h
-argv.c: argv.h
+dhcpd.o: dhcp.h array.h argv.h error.h db.h
+argv.o: argv.h
+tools/dump-schema.o: db.h
 
