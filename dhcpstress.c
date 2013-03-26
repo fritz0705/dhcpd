@@ -266,7 +266,8 @@ uint8_t send_buffer[SEND_BUF_LEN];
 struct config cfg = CONFIG_EMPTY;
 
 /* Stress definitions */
-static void stress_inval_lenmsgs(int sock);
+static void stress_inval_lenmsgs(int sock, int argc, char **argv);
+static void stress_request_all(int sock, int argc, char **argv);
 
 int main(int argc, char **argv)
 {
@@ -288,7 +289,8 @@ int main(int argc, char **argv)
 		printf(
 			"id  function              description\n"
 			"1   inval_lenmsgs         Send messages which are longer than the trans-\n"
-			"                          mitted byte coud\n");
+			"                          mitted byte coud\n"
+			"2   request_all           Send DHCPREQUESTs for any possible IPv4 address\n");
 		exit(0);
 	}
 
@@ -312,7 +314,7 @@ int main(int argc, char **argv)
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int)) != 0)
 		dhcpd_error(1, errno, "Could not set socket to reuse address");
-	if (bind(sock, (const struct sockaddr *)&cfg.remote, sizeof(struct sockaddr_in)) < 0)
+	if (bind(sock, (const struct sockaddr *)&cfg.local, sizeof(struct sockaddr_in)) < 0)
 		dhcpd_error(1, errno, "Could not bind to 0.0.0.0:67");
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (int[]){1}, sizeof(int)) != 0)
 		dhcpd_error(1, errno, "Could not set broadcast socket option");
@@ -325,9 +327,49 @@ int main(int argc, char **argv)
 	{
 		case 1:
 			stress_inval_lenmsgs(sock);
+			break;
+		case 2:
+			stress_request_all(sock);
+			break;
 	}
 
 	exit(0);
+}
+
+static void stress_request_all(int sock)
+{
+	size_t send_len = DHCP_MSG_HDRLEN;
+	memset(send_buffer, 0, DHCP_MSG_LEN);
+	*DHCP_MSG_F_OP(send_buffer) = cfg.type;
+	*DHCP_MSG_F_HLEN(send_buffer) = 6;
+	*DHCP_MSG_F_HTYPE(send_buffer) = 1;
+	ARRAY_COPY(DHCP_MSG_F_MAGIC(send_buffer), DHCP_MSG_MAGIC, 4);
+
+	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
+
+	options[0] = DHCP_OPT_MSGTYPE;
+	options[1] = 1;
+	options[2] = DHCPREQUEST;
+	DHCP_OPT_CONT(options, send_len);
+
+	options[0] = DHCP_OPT_REQIPADDR;
+	options[1] = 4;
+	uint32_t *ipaddr_sl = (uint32_t*)(options + 2);
+	DHCP_OPT_CONT(options, send_len);
+
+	options[0] = DHCP_OPT_END;
+	DHCP_OPT_CONT(options, send_len);
+
+	for (uint32_t i = 0; i < UINT32_MAX; ++i)
+	{
+		*ipaddr_sl = htons(i);
+
+		*DHCP_MSG_F_XID(send_buffer) = i;
+		ARRAY_COPY(DHCP_MSG_F_CHADDR(send_buffer), &i, 4);
+
+		sendto(sock, send_buffer, send_len, 0,
+			(struct sockaddr *)&cfg.remote, sizeof cfg.remote);
+	}
 }
 
 static void stress_inval_lenmsgs(int sock)
