@@ -101,7 +101,7 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		const char *nameservers;
 		uint8_t prefixlen;
 		uint32_t leasetime;
-	} lease_entry;
+	} lease_entry = { NULL, NULL, NULL, 0, 0 };
 
 	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
 	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
@@ -114,10 +114,10 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	if (!inet_pton(AF_INET, lease_entry.address, &address))
 		goto invalid_lease_entry;
 
-	if (!inet_pton(AF_INET, lease_entry.routers, routers))
+	if (lease_entry.routers && !inet_pton(AF_INET, lease_entry.routers, routers))
 		goto invalid_lease_entry;
 
-	if (!inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+	if (lease_entry.nameservers && !inet_pton(AF_INET, lease_entry.nameservers, nameservers))
 		goto invalid_lease_entry;
 
 	if (0)
@@ -167,11 +167,14 @@ invalid_lease_entry:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = DHCP_OPT_ROUTER;
-	options[1] = 4;
-	*(struct in_addr *)(options + 2) = routers[0];
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	if (*routers != NULL)
+	{
+		options[0] = DHCP_OPT_ROUTER;
+		options[1] = 4;
+		*(struct in_addr *)(options + 2) = routers[0];
+		options = DHCP_OPT_NEXT(options);
+		send_len += 6;
+	}
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
@@ -185,11 +188,14 @@ invalid_lease_entry:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = DHCP_OPT_DNS;
-	options[1] = 4;
-	*(struct in_addr *)(options + 2) = nameservers[0];
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	if (*nameservers != NULL)
+	{
+		options[0] = DHCP_OPT_DNS;
+		options[1] = 4;
+		*(struct in_addr *)(options + 2) = nameservers[0];
+		options = DHCP_OPT_NEXT(options);
+		send_len += 6;
+	}
 
 	*options = DHCP_OPT_END;
 	options = DHCP_OPT_NEXT(options);
@@ -265,7 +271,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		const char *nameservers;
 		uint8_t prefixlen;
 		uint32_t leasetime;
-	} lease_entry;
+	} lease_entry = { NULL, NULL, NULL, 0, 0 };
 
 	lease_entry.address = (char*)sqlite3_column_text(ldb_query, 0);
 	lease_entry.routers = (char*)sqlite3_column_text(ldb_query, 1);
@@ -278,10 +284,10 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	if (!inet_pton(AF_INET, lease_entry.address, &address))
 		goto invalid_lease_entry;
 
-	if (!inet_pton(AF_INET, lease_entry.routers, routers))
+	if (lease_enty.routers && !inet_pton(AF_INET, lease_entry.routers, routers))
 		goto invalid_lease_entry;
 
-	if (!inet_pton(AF_INET, lease_entry.nameservers, nameservers))
+	if (lease_entry.nameservers && !inet_pton(AF_INET, lease_entry.nameservers, nameservers))
 		goto invalid_lease_entry;
 
 	if (0)
@@ -362,11 +368,14 @@ nack:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = DHCP_OPT_ROUTER;
-	options[1] = 4;
-	*(struct in_addr *)(options + 2) = routers[0];
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	if (*routers)
+	{
+		options[0] = DHCP_OPT_ROUTER;
+		options[1] = 4;
+		*(struct in_addr *)(options + 2) = routers[0];
+		options = DHCP_OPT_NEXT(options);
+		send_len += 6;
+	}
 
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
@@ -380,11 +389,14 @@ nack:
 	options = DHCP_OPT_NEXT(options);
 	send_len += 6;
 
-	options[0] = DHCP_OPT_DNS;
-	options[1] = 4;
-	*(struct in_addr *)(options + 2) = nameservers[0];
-	options = DHCP_OPT_NEXT(options);
-	send_len += 6;
+	if (*nameservers)
+	{
+		options[0] = DHCP_OPT_DNS;
+		options[1] = 4;
+		*(struct in_addr *)(options + 2) = nameservers[0];
+		options = DHCP_OPT_NEXT(options);
+		send_len += 6;
+	}
 
 	*options = DHCP_OPT_END;
 	options = DHCP_OPT_NEXT(options);
