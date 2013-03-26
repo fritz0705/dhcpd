@@ -27,29 +27,6 @@ enum argv_p_state
 	_ARGV_S_NAMESERVERS_VAL
 };
 
-void argv_defaults(struct argv *out)
-{
-	*out = (struct argv){
-		.argv = NULL,
-		.argc = 0,
-		.arg0 = NULL,
-		.interface = NULL,
-		.db = NULL,
-		.user = NULL,
-		.group = NULL,
-		.iprange = { NULL, NULL },
-		.routers = NULL,
-		.routers_cnt = 0,
-		.nameservers = NULL,
-		.nameservers_cnt = 0,
-		.allocate = false,
-		.help = false,
-		.version = false,
-		.debug = false,
-		._new = false
-	};
-}
-
 bool argv_parse(int argc, char **argv, struct argv *out)
 {
 	enum argv_p_state state = _ARGV_S_ARGUMENT;

@@ -48,9 +48,28 @@ struct argv
 	bool _new;
 };
 
+#define ARGV_EMPTY {\
+		.argv = NULL,\
+		.argc = 0,\
+		.arg0 = NULL,\
+		.interface = NULL,\
+		.db = NULL,\
+		.user = NULL,\
+		.group = NULL,\
+		.iprange = { NULL, NULL },\
+		.routers = NULL,\
+		.routers_cnt = 0,\
+		.nameservers = NULL,\
+		.nameservers_cnt = 0,\
+		.allocate = false,\
+		.help = false,\
+		.version = false,\
+		.debug = false,\
+		._new = false\
+	}
+
 extern void *(*argv_realloc)(void*, size_t);
 
-extern void argv_defaults(struct argv *opt);
 extern bool argv_parse(int argc, char **argv, struct argv *out);
 
 /* Free any dynamic allocated memory in the supplied struct */

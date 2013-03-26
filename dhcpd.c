@@ -52,7 +52,7 @@ struct config cfg = CONFIG_EMPTY;
 
 bool debug = false;
 
-static const char *BROKEN_SOFTWARE_NOTIFICATION = 
+static const char BROKEN_SOFTWARE_NOTIFICATION[] = 
 "#################################### ALERT ####################################\n"
 "  BROKEN SOFTWARE NOTIFICATION - SOMETHING SENDS INVALID DHCP MESSAGES IN YOUR\n"
 "                                    NETWORK\n";
@@ -600,8 +600,7 @@ static void sigint_cb(EV_P_ ev_signal *sig, int revents)
 
 int main(int argc, char **argv)
 {
-	struct argv argv_cfg;
-	argv_defaults(&argv_cfg);
+	struct argv argv_cfg = ARGV_EMPTY;
 
 	if (!argv_parse(argc, argv, &argv_cfg))
 	{
@@ -775,6 +774,7 @@ int main(int argc, char **argv)
 		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 	}
 
+	config_free(&cfg);
 	argv_free(&argv_cfg);
 	if (alloc_db)
 		free(argv_cfg.db);

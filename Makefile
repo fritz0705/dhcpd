@@ -10,7 +10,7 @@ _L_CAP = -lcap
 endif
 
 override LDFLAGS := -lev -lsqlite3 $(_L_CAP) $(LDFLAGS)
-override CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu99 -pedantic $(CFLAGS)
+override CFLAGS := -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
 
 ifdef DEBUG
 override CFLAGS += -O0 -g

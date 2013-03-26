@@ -25,19 +25,22 @@ bool config_fill(struct config *cfg, struct argv *argv)
 
 	return true;
 
-	switch (0)
+	switch (1)
 	{
+		default:
+			break;
+
 invalid_nameserver_address:
-		cfg->error = "Invalid nameserver address";
-		break;
+			cfg->error = "Invalid nameserver address";
+			break;
 
 invalid_iprange_address:
-		cfg->error = "Invalid IP range address";
-		break;
+			cfg->error = "Invalid IP range address";
+			break;
 
 invalid_router_address:
-		cfg->error = "Invalid router address";
-		break;
+			cfg->error = "Invalid router address";
+			break;
 	}
 
 	config_free(cfg);

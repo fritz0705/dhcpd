@@ -65,7 +65,7 @@
 #define DHCP_OPT_F_LEN(o)  ((uint8_t*)(o+1))
 #define DHCP_OPT_F_DATA(o) ((char*)(o+2))
 
-#define DHCP_OPT_NEXT(o) ((typeof(o))((*((uint8_t*)(o))!=255&&*((uint8_t*)(o))!=0)?(((uint8_t*)(o))+((uint8_t*)(o))[1]+2):(((uint8_t*)(o))+1)))
+#define DHCP_OPT_NEXT(o) ((uint8_t*)((*((uint8_t*)(o))!=255&&*((uint8_t*)(o))!=0)?(((uint8_t*)(o))+((uint8_t*)(o))[1]+2):(((uint8_t*)(o))+1)))
 
 enum dhcp_opt_type
 {
