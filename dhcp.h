@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #include "array.h"
 
@@ -146,5 +147,33 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 		return false;
 
 	return true;
+}
+
+static inline void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
+{
+	fprintf(stream,
+		"DHCP message from %s:\n"
+		"\tOP %hhu [%s]\n"
+		"\tHTYPE %hhu HLEN %hhu\n"
+		"\tHOPS %hhu\n"
+		"\tXID %X\n"
+		"\tSECS %hu FLAGS %hu\n"
+		"\tCIADDR %s YIADDR %s SIADDR %s GIADDR %s\n"
+		"\tCHADDR %s\n"
+		"\tMAGIC %X\n"
+		"\tMSG TYPE %u\n",
+		msg->srcaddr,
+		*DHCP_MSG_F_OP(msg->data),
+		(*DHCP_MSG_F_OP(msg->data) == 1 ? "REQUEST" : "REPLY"),
+		*DHCP_MSG_F_HTYPE(msg->data),
+		*DHCP_MSG_F_HLEN(msg->data),
+		*DHCP_MSG_F_HOPS(msg->data),
+		*DHCP_MSG_F_XID(msg->data),
+		*DHCP_MSG_F_SECS(msg->data),
+		*DHCP_MSG_F_FLAGS(msg->data),
+		msg->ciaddr, msg->yiaddr, msg->siaddr, msg->giaddr,
+		msg->chaddr,
+		*DHCP_MSG_F_MAGIC(msg->data),
+		msg->type);
 }
 

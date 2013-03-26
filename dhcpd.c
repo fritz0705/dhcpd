@@ -548,32 +548,6 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 		if (current_option.code == 53)
 			msg_type = (enum dhcp_msg_type)current_option.data[0];
 
-	if (debug)
-		fprintf(stderr,
-			"DHCP message from %s:\n"
-			"\tOP %hhu [%s]\n"
-			"\tHTYPE %hhu HLEN %hhu\n"
-			"\tHOPS %hhu\n"
-			"\tXID %X\n"
-			"\tSECS %hu FLAGS %hu\n"
-			"\tCIADDR %s YIADDR %s SIADDR %s GIADDR %s\n"
-			"\tCHADDR %s\n"
-			"\tMAGIC %X\n"
-			"\tMSG TYPE %u\n",
-			srcaddr,
-			*DHCP_MSG_F_OP(recv_buffer),
-			(*DHCP_MSG_F_OP(recv_buffer) == 1 ? "REQUEST" : "REPLY"),
-			*DHCP_MSG_F_HTYPE(recv_buffer),
-			*DHCP_MSG_F_HLEN(recv_buffer),
-			*DHCP_MSG_F_HOPS(recv_buffer),
-			*DHCP_MSG_F_XID(recv_buffer),
-			*DHCP_MSG_F_SECS(recv_buffer),
-			*DHCP_MSG_F_FLAGS(recv_buffer),
-			ciaddr, yiaddr, siaddr, giaddr,
-			chaddr,
-			*DHCP_MSG_F_MAGIC(recv_buffer),
-			msg_type);
-
 	struct dhcp_msg msg = {
 		.data = recv_buffer,
 		.end = recv_buffer + recvd,
@@ -587,6 +561,9 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 		.srcaddr = srcaddr,
 		.source = (struct sockaddr *)&src_addr
 	};
+
+	if (debug)
+		dhcp_msg_dump(stderr, &msg);
 
 	switch (msg_type)
 	{
@@ -681,37 +658,23 @@ int main(int argc, char **argv)
 			gid = grent->gr_gid;
 		}
 
-		cap_t caps;
-		caps = cap_init();
-
-		cap_value_t cap_presetuid[] = {
-			CAP_NET_BIND_SERVICE,
-			CAP_NET_RAW,
-			CAP_NET_ADMIN,
-			CAP_SETUID,
-			CAP_SETGID
-		};
-		cap_value_t cap_postsetuid[] = {
-			CAP_NET_BIND_SERVICE,
-			CAP_NET_RAW,
-			CAP_NET_ADMIN
-		};
-
-		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
-		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
-		cap_set_flag(caps, CAP_INHERITABLE, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
-
-		cap_set_proc(caps);
-
 		prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
 
 		setgid(gid);
 		setuid(uid);
 
-		cap_clear(caps);
-		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
-		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
-		cap_set_flag(caps, CAP_INHERITABLE, ARRAY_LEN(cap_postsetuid), cap_postsetuid, CAP_SET);
+		cap_t caps;
+		caps = cap_init();
+
+		cap_value_t cap_flags[] = {
+			CAP_NET_BIND_SERVICE,
+			CAP_NET_BROADCAST,
+			CAP_NET_RAW
+		};
+
+		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_flags), cap_flags, CAP_SET);
+		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_flags), cap_flags, CAP_SET);
+
 		cap_set_proc(caps);
 
 		cap_free(caps);
