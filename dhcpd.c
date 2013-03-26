@@ -32,6 +32,7 @@
 #include "argv.h"
 #include "error.h"
 #include "db.h"
+#include "config.h"
 
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
@@ -46,6 +47,8 @@ struct sockaddr_in broadcast = {
 
 uint8_t recv_buffer[RECV_BUF_LEN];
 uint8_t send_buffer[SEND_BUF_LEN];
+
+struct config cfg = CONFIG_EMPTY;
 
 bool debug = false;
 
@@ -640,6 +643,9 @@ int main(int argc, char **argv)
 			argv_cfg.arg0);
 		exit(0);
 	}
+
+	if (!config_fill(&cfg, &argv_cfg))
+		dhcpd_error(1, 0, cfg.error);
 
 	if (argv_cfg.user != NULL)
 	{

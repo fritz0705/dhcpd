@@ -24,7 +24,7 @@ schema.sql: tools/dump-schema
 tools/dump-schema: tools/dump-schema.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
-dhcpd: dhcpd.o argv.o
+dhcpd: dhcpd.o argv.o config.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
@@ -36,7 +36,9 @@ clean:
 	$(RM) schema.sql
 	$(FIND) ./ -name '*.o' -delete
 
-dhcpd.o: dhcp.h array.h argv.h error.h db.h
+dhcpd.o: dhcp.h array.h argv.h error.h db.h config.h
 argv.o: argv.h
+config.o: config.h
+config.h: argv.h
 tools/dump-schema.o: db.h
 

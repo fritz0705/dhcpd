@@ -30,11 +30,11 @@ struct argv
 
 	/* -router IP */
 	char **routers;
-	uint_least8_t routers_cnt;
+	size_t routers_cnt;
 
 	/* -nameserver IP */
 	char **nameservers;
-	uint_least8_t nameservers_cnt;
+	size_t nameservers_cnt;
 
 	/* -allocate */
 	bool allocate;

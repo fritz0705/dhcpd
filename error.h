@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static inline void dhcpd_error(int _exit, int _errno, char *fmt, ...)
+static inline void dhcpd_error(int _exit, int _errno, const char *fmt, ...)
 {
 	char error[512];
 	error[511] = 0;
