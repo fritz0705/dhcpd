@@ -10,6 +10,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/prctl.h>
 
 #include <netinet/in.h>
 #include <net/if.h>
@@ -556,7 +557,6 @@ int main(int argc, char **argv)
 
 	if (argv_cfg.user != NULL)
 	{
-		/* XXX Broken at the moment */
 		uid_t uid = 0;
 		gid_t gid = 0;
 
@@ -609,6 +609,8 @@ int main(int argc, char **argv)
 		cap_set_flag(caps, CAP_INHERITABLE, ARRAY_LEN(cap_presetuid), cap_presetuid, CAP_SET);
 
 		cap_set_proc(caps);
+
+		prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
 
 		setgid(gid);
 		setuid(uid);
