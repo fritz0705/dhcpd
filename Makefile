@@ -6,11 +6,12 @@ LD := $(CC)
 FIND ?= find
 
 ifeq ($(shell uname),Linux)
-_L_CAP = -lcap
+WITH_CAP_DROP ?= yes
 endif
 
-override LDFLAGS := -lev -lsqlite3 $(_L_CAP) $(LDFLAGS)
+override LDFLAGS := $(LDFLAGS)
 override CFLAGS := -Wall -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
+override CPPFLAGS := $(CPPFLAGS)
 
 ifdef DEBUG
 override CFLAGS += -O0 -g
@@ -25,19 +26,19 @@ tools/dump-schema: tools/dump-schema.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o
-	$(LD) $(LDFLAGS) -o $@ $^
+	$(LD) $(LDFLAGS) -lev -lsqlite3 $(if $(WITH_CAP_DROP),-lcap) -o $@ $^
 
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 clean:
 	$(RM) dhcpd
 	$(RM) tools/dump-schema
 	$(RM) schema.sql
-	$(FIND) ./ -name '*.o' -delete
+	$(FIND) ./ -name '*.o' -type f -delete
 
 dhcpd.o: dhcp.h array.h argv.h error.h db.h config.h iplist.h
 dhcp.o: dhcp.h
