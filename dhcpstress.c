@@ -266,8 +266,8 @@ uint8_t send_buffer[SEND_BUF_LEN];
 struct config cfg = CONFIG_EMPTY;
 
 /* Stress definitions */
-static void stress_inval_lenmsgs(int sock, int argc, char **argv);
-static void stress_request_all(int sock, int argc, char **argv);
+static void stress_inval_lenmsgs(int sock);
+static void stress_request_all(int sock);
 
 int main(int argc, char **argv)
 {
