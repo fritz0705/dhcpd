@@ -34,6 +34,12 @@ struct argv
 	bool help;
 	/* -stresses */
 	bool stresses;
+	/* -verbose */
+	bool verbose;
+
+	/* Arguments after -- */
+	char **subargv;
+	int subargc;
 };
 
 #define ARGV_EMPTY {\
@@ -48,7 +54,10 @@ struct argv
 		.seed = NULL,\
 		.type = NULL,\
 		.help = false,\
-		.stresses = false\
+		.stresses = false,\
+		.verbose = false,\
+		.subargv = NULL,\
+		.subargc = 0\
 	}
 
 struct config
@@ -141,6 +150,14 @@ static inline bool argv_parse(int argc, char **argv, struct argv *out)
 					out->help = true;
 				else if (!strcmp(arg, "-stresses"))
 					out->stresses = true;
+				else if (!strcmp(arg, "-verbose"))
+					out->verbose = true;
+				else if (!strcmp(arg, "--"))
+				{
+					out->subargc = argc - i - 1;
+					out->subargv = argv + i + 1;
+					return true;
+				}
 				else
 				{
 					out->argerror = i;
@@ -234,9 +251,9 @@ static inline bool config_fill(struct config *cfg, struct argv *argv)
 		cfg->type = atoi(argv->type);
 	else
 	{
-		if (cfg->local.sin_port == 67 && cfg->remote.sin_port == 68)
+		if (cfg->local.sin_port == 68 && cfg->remote.sin_port == 67)
 			cfg->type = 1;
-		else if (cfg->local.sin_port == 68 && cfg->remote.sin_port == 67)
+		else if (cfg->local.sin_port == 67 && cfg->remote.sin_port == 68)
 			cfg->type = 2;
 	}
 
@@ -297,7 +314,8 @@ int main(int argc, char **argv)
 	if (argv_cfg.help || argv_cfg.interface == NULL || argv_cfg.stress == NULL)
 	{
 		printf("%s [-help] [-stresses] [-sleep TIME] [-seed SEED] [-type INT]\n"
-			"\t[-stress NAME] [-interface IF] [-remote IP PORT] [-local IP PORT]\n",
+			"\t[-stress NAME] [-interface IF] [-remote IP PORT] [-local IP PORT]\n"
+			"\t[-- ARG...]\n",
 			argv_cfg.arg0);
 		exit(0);
 	}
@@ -338,11 +356,25 @@ int main(int argc, char **argv)
 
 static void stress_request_all(int sock)
 {
+	if (cfg.argv->subargc < 3)
+		dhcpd_error(1, 0, "Usage: ... -- SERVER LOWERIP UPPERIP");
+
+	uint32_t lower_ip, upper_ip, server_ip;
+	if (inet_pton(AF_INET, cfg.argv->subargv[0], &server_ip) != 1)
+		dhcpd_error(1, 0, "Invalid server IP address: %s", cfg.argv->subargv[0]);
+	if (inet_pton(AF_INET, cfg.argv->subargv[1], &lower_ip) != 1)
+		dhcpd_error(1, 0, "Invalid lower IP address: %s", cfg.argv->subargv[1]);
+	if (inet_pton(AF_INET, cfg.argv->subargv[2], &upper_ip) != 1)
+		dhcpd_error(1, 0, "Invalid upper IP address: %s", cfg.argv->subargv[2]);
+	lower_ip = ntohl(lower_ip);
+	upper_ip = ntohl(upper_ip);
+
 	size_t send_len = DHCP_MSG_HDRLEN;
 	memset(send_buffer, 0, DHCP_MSG_LEN);
 	*DHCP_MSG_F_OP(send_buffer) = cfg.type;
 	*DHCP_MSG_F_HLEN(send_buffer) = 6;
 	*DHCP_MSG_F_HTYPE(send_buffer) = 1;
+	*DHCP_MSG_F_SIADDR(send_buffer) = server_ip;
 	ARRAY_COPY(DHCP_MSG_F_MAGIC(send_buffer), DHCP_MSG_MAGIC, 4);
 
 	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
@@ -360,12 +392,17 @@ static void stress_request_all(int sock)
 	options[0] = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
 
-	for (uint32_t i = 0; i < UINT32_MAX; ++i)
+	for (uint32_t i = lower_ip; i <= upper_ip; ++i)
 	{
-		*ipaddr_sl = htons(i);
+		*ipaddr_sl = htonl(i);
 
 		*DHCP_MSG_F_XID(send_buffer) = i;
 		ARRAY_COPY(DHCP_MSG_F_CHADDR(send_buffer), &i, 4);
+
+		if (cfg.argv->verbose)
+			fprintf(stderr, "Request IP address %s\n",
+				inet_ntop(AF_INET, &((uint32_t[]){htonl(i)}), ((char[]){[INET_ADDRSTRLEN-1] = 0}),
+					INET_ADDRSTRLEN));
 
 		sendto(sock, send_buffer, send_len, 0,
 			(struct sockaddr *)&cfg.remote, sizeof cfg.remote);
