@@ -84,6 +84,7 @@ static void msg_debug(struct dhcp_msg *msg, int dir)
 	dhcp_msg_dump(stderr, msg);
 }
 
+/* Callback for DHCPDISCOVER messages */
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr, err;
@@ -288,6 +289,7 @@ sql_error:
 	sqlite3_finalize(ldb_query);
 }
 
+/* Callback for DHCPREQUEST messages */
 static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	struct in_addr *requested_addr, *requested_server;
@@ -562,20 +564,27 @@ sql_error:
 	sqlite3_finalize(ldb_query);
 }
 
+/* Callback for DHCPRELEASE messages */
 static void release_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 }
 
+/* Callback for DHCPDECLINE messages */
 static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 }
 
+/* Callback for DHCPINFORM messages */
 static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 }
 
+/* libev callback */
 static void req_cb(EV_P_ ev_io *w, int revents)
 {
+	(void)revents;
+
+	/* Initialize address struct passed to recvfrom */
 	struct sockaddr_in src_addr = {
 		.sin_addr = {INADDR_ANY}
 	};
@@ -667,6 +676,7 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 
 		default:
 			fprintf(stderr, BROKEN_SOFTWARE_NOTIFICATION);
+			msg_debug(&msg, 0);
 			break;
 	}
 }
@@ -778,8 +788,7 @@ int main(int argc, char **argv)
 	{
 		size_t len = strlen(argv_cfg.interface) + sizeof(".db") + 1;
 		argv_cfg.db = malloc(len);
-		stpcpy(stpcpy(argv_cfg.db, argv_cfg.interface), ".db");
-		argv_cfg.db[len-1] = 0;
+		snprintf(argv_cfg.db, len, "%s.db", argv_cfg.interface);
 		alloc_db = true;
 	}
 
