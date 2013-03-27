@@ -812,10 +812,12 @@ int main(int argc, char **argv)
 		if (ifa->ifa_addr == NULL)
 			continue;
 
-		if (ifa->ifa_addr->sa_family == AF_INET)
+		if (ifa->ifa_addr->sa_family == AF_INET &&
+				strcmp(ifa->ifa_name, argv_cfg.interface) == 0)
 		{
 			struct sockaddr_in *ifa_addr_in = (struct sockaddr_in *)ifa->ifa_addr;
 			server_id = *ifa_addr_in;
+			break;
 		}
 	}
 
