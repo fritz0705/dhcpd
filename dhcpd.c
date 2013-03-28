@@ -19,6 +19,8 @@
 #ifdef __linux__
 #include <sys/capability.h>
 #include <sys/prctl.h>
+
+#include <cap-ng.h>
 #endif
 
 #include <pwd.h>
@@ -745,26 +747,11 @@ int main(int argc, char **argv)
 			gid = grent->gr_gid;
 		}
 
-		prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
-
-		setgid(gid);
-		setuid(uid);
-
-		cap_t caps;
-		caps = cap_init();
-
-		cap_value_t cap_flags[] = {
-			CAP_NET_BIND_SERVICE,
-			CAP_NET_BROADCAST,
-			CAP_NET_RAW
-		};
-
-		cap_set_flag(caps, CAP_EFFECTIVE, ARRAY_LEN(cap_flags), cap_flags, CAP_SET);
-		cap_set_flag(caps, CAP_PERMITTED, ARRAY_LEN(cap_flags), cap_flags, CAP_SET);
-
-		cap_set_proc(caps);
-
-		cap_free(caps);
+		capng_clear(CAPNG_SELECT_BOTH);
+		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
+			CAP_NET_BIND_SERVICE, CAP_NET_BROADCAST, CAP_NET_RAW, -1);
+		if (capng_change_id(uid, gid, CAPNG_DROP_SUPP_GRP | CAPNG_CLEAR_BOUNDING))
+			dhcpd_error(1, 0, "Could not change UID and drop capabilities");
 #else
 		dhcpd_error(1, 0, "Can only drop privileges on Linux");
 #endif

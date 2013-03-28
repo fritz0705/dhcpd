@@ -26,7 +26,7 @@ tools/dump-schema: tools/dump-schema.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o
-	$(LD) $(LDFLAGS) -lev -lsqlite3 $(if $(WITH_CAP_DROP),-lcap) -o $@ $^
+	$(LD) $(LDFLAGS) -lev -lsqlite3 $(if $(WITH_CAP_DROP),-lcap-ng) -o $@ $^
 
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
