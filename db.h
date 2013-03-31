@@ -1,5 +1,12 @@
 #pragma once
 
+#include <sqlite3.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifndef DHCPD_DB_H_
+#define DHCPD_DB_H_
+
 static const char DB_SCHEMA[] =
 "CREATE TABLE IF NOT EXISTS leases (\n"
 "	'id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,\n"
@@ -11,15 +18,6 @@ static const char DB_SCHEMA[] =
 "	'leasetime' INTEGER DEFAULT 3600,\n"
 "	'allocated' BOOLEAN DEFAULT 0\n"
 ");\n";
-
-#include <sqlite3.h>
-#include <stdbool.h>
-#include <stdint.h>
-
-static inline void db_init(sqlite3 *db)
-{
-	sqlite3_exec(db, DB_SCHEMA, NULL, NULL, NULL);
-}
 
 #define DB_LEASE_EMPTY {\
 		.id = 0,\
@@ -43,4 +41,11 @@ struct db_lease
 	uint32_t leasetime;
 	bool allocated;
 };
+
+static inline void db_init(sqlite3 *db)
+{
+	sqlite3_exec(db, DB_SCHEMA, NULL, NULL, NULL);
+}
+
+#endif
 

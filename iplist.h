@@ -8,6 +8,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifndef DHCPD_IPLIST_H_
+#define DHCPD_IPLIST_H_
+
 static inline bool iplist_dump(struct in_addr *in, size_t in_cnt, char *out, size_t out_len)
 {
 	size_t n_len = INET_ADDRSTRLEN * in_cnt + in_cnt;
@@ -65,4 +68,6 @@ return_false:
 
 	return true;
 }
+
+#endif
 

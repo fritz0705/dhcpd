@@ -9,6 +9,10 @@ ifeq ($(shell uname),Linux)
 WITH_CAP_DROP ?= yes
 endif
 
+ifdef WITH_CAP_DROP
+L_CAP_NG=$(shell pkg-config --libs libcap-ng)
+endif
+
 override LDFLAGS := $(LDFLAGS)
 override CFLAGS := -Wall -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
 override CPPFLAGS := $(CPPFLAGS)
@@ -26,7 +30,7 @@ tools/dump-schema: tools/dump-schema.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o
-	$(LD) $(LDFLAGS) -lev -lsqlite3 $(if $(WITH_CAP_DROP),-lcap-ng) -o $@ $^
+	$(LD) $(LDFLAGS) -lev -lsqlite3 $(L_CAP_NG) -o $@ $^
 
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^

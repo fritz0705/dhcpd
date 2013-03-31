@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -5,6 +7,9 @@
 #include <netinet/in.h>
 
 #include "array.h"
+
+#ifndef DHCPD_DHCP_H_
+#define DHCPD_DHCP_H_
 
 /* A DHCP message consists of a fixed-length header and a variable-length
  * option part:
@@ -186,4 +191,6 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 }
 
 extern void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg);
+
+#endif
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef DHCPD_ARGV_H_
+#define DHCPD_ARGV_H_
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -86,4 +89,6 @@ static inline void argv_free(struct argv *out)
 	if (out->nameservers)
 		out->nameservers = argv_realloc(out->nameservers, out->nameservers_cnt = 0);
 }
+
+#endif
 
