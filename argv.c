@@ -111,13 +111,17 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 				break;
 
 			case _ARGV_S_ROUTERS_VAL:
-				out->routers = realloc(out->routers, ++out->routers_cnt * sizeof(char*));
+				out->routers = argv_realloc(
+					out->routers,
+					++out->routers_cnt * sizeof(char*));
 				out->routers[out->routers_cnt - 1] = arg;
 				state = _ARGV_S_ARGUMENT;
 				break;
 
 			case _ARGV_S_NAMESERVERS_VAL:
-				out->nameservers = realloc(out->nameservers, ++out->nameservers_cnt * sizeof(char*));
+				out->nameservers = argv_realloc(
+					out->nameservers,
+					++out->nameservers_cnt * sizeof(char*));
 				out->nameservers[out->nameservers_cnt - 1] = arg;
 				state = _ARGV_S_ARGUMENT;
 				break;
