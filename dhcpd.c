@@ -17,9 +17,6 @@
 #include <unistd.h>
 
 #ifdef __linux__
-#include <sys/capability.h>
-#include <sys/prctl.h>
-
 #include <cap-ng.h>
 #endif
 
