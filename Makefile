@@ -39,10 +39,13 @@ dhcpstress: dhcpstress.o dhcp.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 clean:
-	$(RM) dhcpd
+	$(RM) dhcpd dhcpstress
 	$(RM) tools/dump-schema
 	$(RM) schema.sql
 	$(FIND) ./ -name '*.o' -type f -delete
+
+fullclean:
+	$(FIND) ./ -name '*.db' -type f -delete
 
 dhcpd.o: dhcp.h array.h argv.h error.h db.h config.h iplist.h
 dhcp.o: dhcp.h
