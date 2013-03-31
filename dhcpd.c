@@ -399,13 +399,13 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	}
 	else
 	{
-		struct db_lease db_lease = DB_LEASE_EMPTY;
-
-		db_lease.address = (char*)sqlite3_column_text(ldb_query, 0);
-		db_lease.routers = (char*)sqlite3_column_text(ldb_query, 1);
-		db_lease.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
-		db_lease.prefixlen = sqlite3_column_int(ldb_query, 3);
-		db_lease.leasetime = sqlite3_column_int(ldb_query, 4);
+		struct db_lease db_lease = (struct db_lease){
+			.address = (char*)sqlite3_column_text(ldb_query, 0),
+			.routers = (char*)sqlite3_column_text(ldb_query, 1),
+			.nameservers = (char*)sqlite3_column_text(ldb_query, 2),
+			.prefixlen = sqlite3_column_int(ldb_query, 3),
+			.leasetime = sqlite3_column_int(ldb_query, 4)
+		};
 
 		if (db_lease.address == NULL)
 			goto invalid_lease_entry;
@@ -566,6 +566,59 @@ sql_error:
 /* Callback for DHCPRELEASE messages */
 static void release_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	int sqlerr;
+	sqlite3_stmt *stmt = NULL;
+
+	sqlerr = sqlite3_prepare_v2(leasedb,
+		"SELECT id, allocated "
+		"FROM leases "
+		"WHERE hwaddr = ?;", -1, &stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	sqlerr = sqlite3_bind_text(stmt, 1, msg->chaddr, -1, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	sqlerr = sqlite3_step(stmt);
+	if (sqlerr != SQLITE_ROW)
+	{
+		if (sqlerr != SQLITE_DONE)
+			goto sql_error;
+		else
+			goto done;
+	}
+
+	struct db_lease db_lease = (struct db_lease){
+		.id = sqlite3_column_int(stmt, 0),
+		.allocated = (bool)sqlite3_column_int(stmt, 1)
+	};
+
+	if (db_lease.allocated == false)
+		goto done;
+
+	sqlite3_finalize(stmt);
+	stmt = NULL;
+
+	sqlerr = sqlite3_prepare_v2(leasedb,
+		"DELETE FROM leases WHERE id = ?;", -1, &stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	sqlerr = sqlite3_bind_int(stmt, 1, db_lease.id);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	while ((sqlerr = sqlite3_step(stmt)) == SQLITE_ROW) ;
+	if (sqlerr != SQLITE_DONE)
+		goto sql_error;
+
+done:
+	if (0)
+sql_error:
+		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	if (stmt != NULL)
+		sqlite3_finalize(stmt);
 }
 
 /* Callback for DHCPDECLINE messages */
