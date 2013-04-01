@@ -87,33 +87,29 @@ static void msg_debug(struct dhcp_msg *msg, int dir)
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr, err;
-	sqlite3_stmt *ldb_query;
+	sqlite3_stmt *stmt = NULL;
+	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
+	bool unalloc_lease = false;
 
 	sqlerr = sqlite3_prepare_v2(leasedb,
-		"SELECT address, routers, nameservers, prefixlen, leasetime "
-		"FROM leases "
-		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
-	if (sqlerr != SQLITE_OK)
-	{
-		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
-		return;
-	}
-
-	sqlerr = sqlite3_bind_text(ldb_query, 1, msg->chaddr, -1, NULL);
+		"SELECT address, routers, nameservers, prefixlen, leasetime\n"
+		"FROM leases\n"
+		"WHERE hwaddr = ?;", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
 		goto sql_error;
 
-	sqlerr = sqlite3_step(ldb_query);
+	sqlerr = sqlite3_bind_text(stmt, 1, msg->chaddr, -1, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
 
-	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
-	bool unalloc_lease = false;
+	sqlerr = sqlite3_step(stmt);
 
 	if (sqlerr != SQLITE_ROW)
 	{
 		if (sqlerr != SQLITE_DONE)
 			goto sql_error;
 
-		sqlite3_finalize(ldb_query);
+		sqlite3_finalize(stmt);
 
 		if (cfg.argv->allocate)
 		{
@@ -129,9 +125,9 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 			uint32_t ip;
 
 			sqlite3_prepare_v2(leasedb,
-				"SELECT COUNT(*) "
-				"FROM leases "
-				"WHERE address = ?;", -1, &ldb_query, NULL);
+				"SELECT COUNT(*)\n"
+				"FROM leases\n"
+				"WHERE address = ?;", -1, &stmt, NULL);
 
 			for (ip = iprange[0]; ip <= iprange[1]; ++ip)
 			{
@@ -139,21 +135,21 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 				char ip_str[INET_ADDRSTRLEN];
 
 				inet_ntop(AF_INET, &lease.address, ip_str, INET_ADDRSTRLEN);
-				sqlite3_bind_text(ldb_query, 1, ip_str, -1, NULL);
+				sqlite3_bind_text(stmt, 1, ip_str, -1, NULL);
 
-				if (sqlite3_step(ldb_query) == SQLITE_ERROR)
+				if (sqlite3_step(stmt) == SQLITE_ERROR)
 					goto sql_error;
 
-				if (sqlite3_column_int(ldb_query, 0) == 0)
+				if (sqlite3_column_int(stmt, 0) == 0)
 				{
-					sqlite3_finalize(ldb_query);
+					sqlite3_finalize(stmt);
 					goto offer;
 				}
 
-				sqlite3_reset(ldb_query);
+				sqlite3_reset(stmt);
 			}
 
-			sqlite3_finalize(ldb_query);
+			sqlite3_finalize(stmt);
 		}
 		return;
 	}
@@ -161,11 +157,11 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	{
 		struct db_lease db_lease = DB_LEASE_EMPTY;
 
-		db_lease.address = (char*)sqlite3_column_text(ldb_query, 0);
-		db_lease.routers = (char*)sqlite3_column_text(ldb_query, 1);
-		db_lease.nameservers = (char*)sqlite3_column_text(ldb_query, 2);
-		db_lease.prefixlen = sqlite3_column_int(ldb_query, 3);
-		db_lease.leasetime = sqlite3_column_int(ldb_query, 4);
+		db_lease.address = (char*)sqlite3_column_text(stmt, 0);
+		db_lease.routers = (char*)sqlite3_column_text(stmt, 1);
+		db_lease.nameservers = (char*)sqlite3_column_text(stmt, 2);
+		db_lease.prefixlen = sqlite3_column_int(stmt, 3);
+		db_lease.leasetime = sqlite3_column_int(stmt, 4);
 
 		if (db_lease.address == NULL)
 			goto invalid_lease_entry;
@@ -206,11 +202,11 @@ invalid_lease_entry:
 					db_lease.nameservers,
 					db_lease.prefixlen,
 					db_lease.leasetime);
-			sqlite3_finalize(ldb_query);
+			sqlite3_finalize(stmt);
 			return;
 		}
 
-		sqlite3_finalize(ldb_query);
+		sqlite3_finalize(stmt);
 	}
 
 	size_t send_len;
@@ -285,7 +281,8 @@ offer:
 sql_error:
 
 	dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
-	sqlite3_finalize(ldb_query);
+	if (stmt)
+		sqlite3_finalize(stmt);
 }
 
 /* Callback for DHCPREQUEST messages */
@@ -314,23 +311,23 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		return;
 
 	int sqlerr, err;
-	sqlite3_stmt *ldb_query;
+	sqlite3_stmt *stmt = NULL;
 
 	sqlerr = sqlite3_prepare_v2(leasedb,
-		"SELECT address, routers, nameservers, prefixlen, leasetime "
-		"FROM leases "
-		"WHERE hwaddr = ?;", -1, &ldb_query, NULL);
+		"SELECT address, routers, nameservers, prefixlen, leasetime\n"
+		"FROM leases\n"
+		"WHERE hwaddr = ?;", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
 	{
 		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 		return;
 	}
 
-	sqlerr = sqlite3_bind_text(ldb_query, 1, msg->chaddr, -1, NULL);
+	sqlerr = sqlite3_bind_text(stmt, 1, msg->chaddr, -1, NULL);
 	if (sqlerr != SQLITE_OK)
 		goto sql_error;
 
-	sqlerr = sqlite3_step(ldb_query);
+	sqlerr = sqlite3_step(stmt);
 
 	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
 	bool unalloc_lease = false;
@@ -340,7 +337,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		if (sqlerr != SQLITE_DONE)
 			goto sql_error;
 
-		sqlite3_finalize(ldb_query);
+		sqlite3_finalize(stmt);
 
 		if (cfg.argv->allocate)
 		{
@@ -348,10 +345,10 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 					ntohl(cfg.iprange[1].s_addr) >= ntohl(requested_addr->s_addr))
 			{
 				sqlerr = sqlite3_prepare_v2(leasedb,
-					"INSERT INTO leases "
-					"('address', 'routers', 'nameservers', 'prefixlen', 'leasetime', "
-					"'allocated', 'hwaddr') VALUES "
-					"(?, ?, ?, ?, ?, ?, ?);", -1, &ldb_query, NULL);
+					"INSERT INTO leases\n"
+					"('address', 'routers', 'nameservers', 'prefixlen', 'leasetime',\n"
+					"'allocated', 'hwaddr') VALUES\n"
+					"(?, ?, ?, ?, ?, ?, ?);", -1, &stmt, NULL);
 				if (sqlerr != SQLITE_OK)
 				{
 					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
@@ -373,23 +370,23 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 				char address[INET_ADDRSTRLEN];
 				inet_ntop(AF_INET, &lease.address, address, INET_ADDRSTRLEN);
 				
-				sqlerr = sqlite3_bind_text(ldb_query, 1, address, -1, NULL);
-				sqlerr = sqlite3_bind_text(ldb_query, 2, routers, -1, NULL);
-				sqlerr = sqlite3_bind_text(ldb_query, 3, nameservers, -1, NULL);
-				sqlerr = sqlite3_bind_int(ldb_query, 4, lease.prefixlen);
-				sqlerr = sqlite3_bind_int(ldb_query, 5, lease.leasetime);
-				sqlerr = sqlite3_bind_int(ldb_query, 6, 1);
-				sqlerr = sqlite3_bind_text(ldb_query, 7, msg->chaddr, -1, NULL);
+				sqlerr = sqlite3_bind_text(stmt, 1, address, -1, NULL);
+				sqlerr = sqlite3_bind_text(stmt, 2, routers, -1, NULL);
+				sqlerr = sqlite3_bind_text(stmt, 3, nameservers, -1, NULL);
+				sqlerr = sqlite3_bind_int(stmt, 4, lease.prefixlen);
+				sqlerr = sqlite3_bind_int(stmt, 5, lease.leasetime);
+				sqlerr = sqlite3_bind_int(stmt, 6, 1);
+				sqlerr = sqlite3_bind_text(stmt, 7, msg->chaddr, -1, NULL);
 
-				sqlerr = sqlite3_step(ldb_query);
+				sqlerr = sqlite3_step(stmt);
 				if (sqlerr != SQLITE_DONE)
 				{
 					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
-					sqlite3_finalize(ldb_query);
+					sqlite3_finalize(stmt);
 					goto nack;
 				}
 
-				sqlite3_finalize(ldb_query);
+				sqlite3_finalize(stmt);
 
 				goto ack;
 			}
@@ -400,11 +397,11 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	else
 	{
 		struct db_lease db_lease = (struct db_lease){
-			.address = (char*)sqlite3_column_text(ldb_query, 0),
-			.routers = (char*)sqlite3_column_text(ldb_query, 1),
-			.nameservers = (char*)sqlite3_column_text(ldb_query, 2),
-			.prefixlen = sqlite3_column_int(ldb_query, 3),
-			.leasetime = sqlite3_column_int(ldb_query, 4)
+			.address = (char*)sqlite3_column_text(stmt, 0),
+			.routers = (char*)sqlite3_column_text(stmt, 1),
+			.nameservers = (char*)sqlite3_column_text(stmt, 2),
+			.prefixlen = sqlite3_column_int(stmt, 3),
+			.leasetime = sqlite3_column_int(stmt, 4)
 		};
 
 		if (db_lease.address == NULL)
@@ -446,12 +443,12 @@ invalid_lease_entry:
 					db_lease.nameservers,
 					db_lease.prefixlen,
 					db_lease.leasetime);
-			sqlite3_finalize(ldb_query);
+			sqlite3_finalize(stmt);
 			goto nack;
 		}
 	}
 
-	sqlite3_finalize(ldb_query);
+	sqlite3_finalize(stmt);
 
 	if (memcmp(&lease.address, requested_addr, 4) != 0)
 	{
@@ -560,7 +557,8 @@ ack:
 sql_error:
 
 	dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
-	sqlite3_finalize(ldb_query);
+	if (stmt)
+		sqlite3_finalize(stmt);
 }
 
 /* Callback for DHCPRELEASE messages */
