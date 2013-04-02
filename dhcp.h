@@ -69,14 +69,19 @@
 #define DHCP_MSG_MAGIC_CHECK(m) (m[0] == 99 && m[1] == 130 && m[2] == 83 && m[3] == 99)
 
 #define DHCP_OPT_F_CODE(o) ((uint8_t*)(o))
-#define DHCP_OPT_F_LEN(o)  ((uint8_t*)(o+1))
-#define DHCP_OPT_F_DATA(o) ((char*)(o+2))
+#define DHCP_OPT_F_LEN(o)  ((uint8_t*)((o)+1))
+#define DHCP_OPT_F_DATA(o) ((char*)((o)+2))
 
 #define DHCP_OPT_LEN(o) (((uint8_t*)(o))[0] != 255 && ((uint8_t*)(o))[0] != 0 ? ((uint8_t*)(o))[1] + 2 : 1)
 #define DHCP_OPT_NEXT(o) (((uint8_t*)(o))+DHCP_OPT_LEN(o))
 #define DHCP_OPT_CONT(o, l) {\
 		(l) += DHCP_OPT_LEN(o);\
 		(o) = DHCP_OPT_NEXT(o);\
+	}
+#define DHCP_OPT(m) {\
+		.code = *DHCP_OPT_F_CODE(m),\
+		.len = *DHCP_OPT_F_LEN(m),\
+		.data = ((*DHCP_OPT_F_LEN(m)) > 0 ? DHCP_OPT_F_DATA(m) : NULL)\
 	}
 
 enum dhcp_opt_type
@@ -132,13 +137,14 @@ struct dhcp_msg
 struct dhcp_lease
 {
 	struct in_addr address;
+
 	struct in_addr *routers;
 	size_t routers_cnt;
 
 	struct in_addr *nameservers;
 	size_t nameservers_cnt;
 
-	uint32_t leasetime;
+	time_t leasetime;
 	uint8_t prefixlen;
 };
 
@@ -168,18 +174,7 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 		return false;
 
 	if (opt != NULL)
-	{
-		*opt = (struct dhcp_opt){
-			.code = *DHCP_OPT_F_CODE(*cur),
-			.len = 0,
-			.data = NULL
-		};
-		if (*DHCP_OPT_F_CODE(*cur) != DHCP_OPT_STUB)
-		{
-			opt->len = *DHCP_OPT_F_LEN(*cur);
-			opt->data = DHCP_OPT_F_DATA(*cur);
-		}
-	}
+		*opt = (struct dhcp_opt)DHCP_OPT(*cur);
 
 	/* Overflow detection */
 	if ((*cur) + DHCP_OPT_LEN(*cur) >= end)

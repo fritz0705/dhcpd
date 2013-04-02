@@ -86,7 +86,7 @@ static void msg_debug(struct dhcp_msg *msg, int dir)
 /* Callback for DHCPDISCOVER messages */
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
-	int sqlerr, err;
+	int sqlerr;
 	sqlite3_stmt *stmt = NULL;
 	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
 	bool unalloc_lease = false;
@@ -113,15 +113,20 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 		if (cfg.argv->allocate)
 		{
-			lease.routers = cfg.routers;
-			lease.routers_cnt = cfg.routers_cnt;
-			lease.nameservers = cfg.nameservers;
-			lease.nameservers_cnt = cfg.nameservers_cnt;
-			lease.leasetime = cfg.leasetime;
-			lease.prefixlen = cfg.prefixlen;
+			lease = (struct dhcp_lease){
+				.routers = cfg.routers,
+				.routers_cnt = cfg.routers_cnt,
+				.nameservers = cfg.nameservers,
+				.nameservers_cnt = cfg.nameservers_cnt,
+				.leasetime = cfg.leasetime,
+				.prefixlen = cfg.prefixlen
+			};
 
 			/* TODO optimize this */
-			uint32_t iprange[2] = { ntohl(cfg.iprange[0].s_addr), ntohl(cfg.iprange[1].s_addr) };
+			uint32_t iprange[2] = {
+				ntohl(cfg.iprange[0].s_addr),
+				ntohl(cfg.iprange[1].s_addr)
+			};
 			uint32_t ip;
 
 			sqlite3_prepare_v2(leasedb,
@@ -155,13 +160,13 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	}
 	else
 	{
-		struct db_lease db_lease = DB_LEASE_EMPTY;
-
-		db_lease.address = (char*)sqlite3_column_text(stmt, 0);
-		db_lease.routers = (char*)sqlite3_column_text(stmt, 1);
-		db_lease.nameservers = (char*)sqlite3_column_text(stmt, 2);
-		db_lease.prefixlen = sqlite3_column_int(stmt, 3);
-		db_lease.leasetime = sqlite3_column_int(stmt, 4);
+		struct db_lease db_lease = {
+			.address = (char*)sqlite3_column_text(stmt, 0),
+			.routers = (char*)sqlite3_column_text(stmt, 1),
+			.nameservers = (char*)sqlite3_column_text(stmt, 2),
+			.prefixlen = sqlite3_column_int(stmt, 3),
+			.leasetime = sqlite3_column_int(stmt, 4)
+		};
 
 		if (db_lease.address == NULL)
 			goto invalid_lease_entry;
@@ -262,7 +267,7 @@ offer:
 	*options = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
 
-	err = sendto(w->fd,
+	int err = sendto(w->fd,
 		send_buffer, send_len,
 		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
 
@@ -355,13 +360,15 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 					goto nack;
 				}
 
-				lease.address = *requested_addr;
-				lease.routers = cfg.routers;
-				lease.routers_cnt = cfg.routers_cnt;
-				lease.nameservers = cfg.nameservers;
-				lease.nameservers_cnt = cfg.nameservers_cnt;
-				lease.leasetime = cfg.leasetime;
-				lease.prefixlen = cfg.prefixlen;
+				lease = (struct dhcp_lease){
+					.address = *requested_addr,
+					.routers = cfg.routers,
+					.routers_cnt = cfg.routers_cnt,
+					.nameservers = cfg.nameservers,
+					.nameservers_cnt = cfg.nameservers_cnt,
+					.leasetime = cfg.leasetime,
+					.prefixlen = cfg.prefixlen
+				};
 
 				char routers[INET_ADDRSTRLEN * lease.routers_cnt + lease.routers_cnt];
 				iplist_dump(lease.routers, lease.routers_cnt, routers, ARRAY_LEN(routers));
