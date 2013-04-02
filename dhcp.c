@@ -1,6 +1,7 @@
 #include "dhcp.h"
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
 
 void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
