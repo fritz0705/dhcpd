@@ -186,6 +186,9 @@ static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *e
 }
 
 extern void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg);
+extern uint8_t *dhcp_opt_add_lease(uint8_t *options,
+	size_t *send_len,
+	struct dhcp_lease *lease);
 
 #endif
 

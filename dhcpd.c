@@ -74,12 +74,6 @@ static int mac_ntop(char *addr, char *dst, size_t s)
 		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
 
-/* Return netmask for specified prefix length */
-static uint32_t netmask_from_prefixlen(uint8_t prefixlen)
-{
-	return htonl(0xFFFFFFFFU - (1 << (32 - prefixlen)) + 1);
-}
-
 static void msg_debug(struct dhcp_msg *msg, int dir)
 {
 	if (dir == 0)
@@ -238,38 +232,12 @@ offer:
 	options[2] = DHCPOFFER;
 	DHCP_OPT_CONT(options, send_len);
 
-	options[0] = DHCP_OPT_NETMASK;
-	options[1] = 4;
-	ARRAY_COPY((options + 2), (uint8_t*)((uint32_t[]){netmask_from_prefixlen(lease.prefixlen)}), 4);
-	DHCP_OPT_CONT(options, send_len);
-
-	if (lease.routers_cnt > 0)
-	{
-		options[0] = DHCP_OPT_ROUTER;
-		options[1] = lease.routers_cnt * 4;
-		for (size_t i = 0; i < lease.routers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = lease.routers[i];
-		DHCP_OPT_CONT(options, send_len);
-	}
-
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	ARRAY_COPY((options + 2), &msg->sid->sin_addr, 4);
 	DHCP_OPT_CONT(options, send_len);
 
-	options[0] = DHCP_OPT_LEASETIME;
-	options[1] = 4;
-	*(uint32_t*)(options + 2) = htonl(lease.leasetime);
-	DHCP_OPT_CONT(options, send_len);
-
-	if (lease.nameservers_cnt > 0)
-	{
-		options[0] = DHCP_OPT_DNS;
-		options[1] = 4 * lease.nameservers_cnt;
-		for (size_t i = 0; i < lease.nameservers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = lease.nameservers[i];
-		DHCP_OPT_CONT(options, send_len);
-	}
+	options = dhcp_opt_add_lease(options, &send_len, &lease);
 
 	*options = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
@@ -364,10 +332,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 					"'allocated', 'hwaddr') VALUES\n"
 					"(?, ?, ?, ?, ?, ?, ?);", -1, &stmt, NULL);
 				if (sqlerr != SQLITE_OK)
-				{
-					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
 					goto nack;
-				}
 
 				lease = (struct dhcp_lease){
 					.address = *requested_addr,
@@ -520,38 +485,12 @@ ack:
 	options[2] = DHCPACK;
 	DHCP_OPT_CONT(options, send_len);
 
-	options[0] = DHCP_OPT_NETMASK;
-	options[1] = 4;
-	ARRAY_COPY((options + 2), (uint8_t*)((uint32_t[]){netmask_from_prefixlen(lease.prefixlen)}), 4);
-	DHCP_OPT_CONT(options, send_len);
-
-	if (lease.routers_cnt > 0)
-	{
-		options[0] = DHCP_OPT_ROUTER;
-		options[1] = lease.routers_cnt * 4;
-		for (size_t i = 0; i < lease.routers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = lease.routers[i];
-		DHCP_OPT_CONT(options, send_len);
-	}
-
 	options[0] = DHCP_OPT_SERVERID;
 	options[1] = 4;
 	ARRAY_COPY((options + 2), &msg->sid->sin_addr, 4);
 	DHCP_OPT_CONT(options, send_len);
 
-	options[0] = DHCP_OPT_LEASETIME;
-	options[1] = 4;
-	*(uint32_t*)(options + 2) = htonl(lease.leasetime);
-	DHCP_OPT_CONT(options, send_len);
-
-	if (lease.nameservers_cnt > 0)
-	{
-		options[0] = DHCP_OPT_DNS;
-		options[1] = lease.nameservers_cnt * 4;
-		for (size_t i = 0; i < lease.nameservers_cnt; ++i)
-			*(struct in_addr *)(options + 2 + (i * 4)) = lease.nameservers[i];
-		DHCP_OPT_CONT(options, send_len);
-	}
+	options = dhcp_opt_add_lease(options, &send_len, &lease);
 
 	*options = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
