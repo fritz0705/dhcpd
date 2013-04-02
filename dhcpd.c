@@ -586,6 +586,119 @@ static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 /* Callback for DHCPINFORM messages */
 static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	int sqlerr;
+	sqlite3_stmt *stmt = NULL;
+	struct dhcp_lease lease = DHCP_LEASE_EMPTY;
+	bool unalloc_lease = false;
+
+	sqlerr = sqlite3_prepare_v2(leasedb,
+		"SELECT routers, nameservers\n"
+		"FROM leases\n"
+		"WHERE address = ?;", -1, &stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	sqlerr = sqlite3_bind_text(stmt, 1, msg->ciaddr, -1, NULL);
+	if (sqlerr != SQLITE_OK)
+		goto sql_error;
+
+	sqlerr = sqlite3_step(stmt);
+
+	if (sqlerr != SQLITE_ROW)
+	{
+		if (sqlerr != SQLITE_DONE)
+			goto sql_error;
+
+		sqlite3_finalize(stmt);
+
+		if (cfg.argv->allocate)
+		{
+			lease = (struct dhcp_lease){
+				.routers = cfg.routers,
+				.routers_cnt = cfg.routers_cnt,
+				.nameservers = cfg.nameservers,
+				.nameservers_cnt = cfg.nameservers_cnt,
+				.prefixlen = 0,
+				.leasetime = 0
+			};
+			goto ack;
+		}
+		return;
+	}
+	else
+	{
+		struct db_lease db_lease = {
+			.routers = (char*)sqlite3_column_text(stmt, 1),
+			.nameservers = (char*)sqlite3_column_text(stmt, 2)
+		};
+
+		if (db_lease.routers)
+			if (!iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt))
+				goto invalid_lease_entry;
+
+		if (db_lease.nameservers)
+			if (!iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+				goto invalid_lease_entry;
+
+		if (0)
+		{
+invalid_lease_entry:
+			if (lease.routers)
+				free(lease.routers);
+			if (lease.nameservers)
+				free(lease.nameservers);
+
+			sqlite3_finalize(stmt);
+			return;
+		}
+
+		unalloc_lease = true;
+
+		sqlite3_finalize(stmt);
+	}
+
+	size_t send_len;
+ack:
+	send_len = DHCP_MSG_HDRLEN;
+	memset(send_buffer, 0, DHCP_MSG_LEN);
+	dhcp_msg_prepare(send_buffer, msg->data);
+
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(send_buffer), &msg->sid->sin_addr, 4);
+
+	uint8_t *options = DHCP_MSG_F_OPTIONS(send_buffer);
+
+	options[0] = DHCP_OPT_MSGTYPE;
+	options[1] = 1;
+	options[2] = DHCPACK;
+	DHCP_OPT_CONT(options, send_len);
+
+	options = dhcp_opt_add_lease(options, &send_len, &lease);
+
+	*options = DHCP_OPT_END;
+	DHCP_OPT_CONT(options, send_len);
+
+	if (debug)
+		msg_debug(&((struct dhcp_msg){.data = send_buffer, .length = send_len }), 1);
+	int err = sendto(w->fd,
+		send_buffer, send_len,
+		MSG_DONTWAIT, msg->source, sizeof(struct sockaddr_in));
+
+	if (err < 0)
+		dhcpd_error(0, 1, "Could not send DHCPACK");
+
+	if (unalloc_lease)
+	{
+		if (lease.routers)
+			free(lease.routers);
+		if (lease.nameservers)
+			free(lease.nameservers);
+	}
+
+	return;
+sql_error:
+	dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	if (stmt)
+		sqlite3_finalize(stmt);
 }
 
 /* libev callback */
