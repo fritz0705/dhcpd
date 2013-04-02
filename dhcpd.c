@@ -37,6 +37,8 @@
 #define RECV_BUF_LEN 4096
 #define SEND_BUF_LEN 4096
 
+#define VERSION "0.1"
+
 sqlite3 *leasedb;
 
 struct sockaddr_in server_id;
@@ -56,6 +58,11 @@ static const char BROKEN_SOFTWARE_NOTIFICATION[] =
 "#################################### ALERT ####################################\n"
 "  BROKEN SOFTWARE NOTIFICATION - SOMETHING SENDS INVALID DHCP MESSAGES IN YOUR\n"
 "                                    NETWORK\n";
+static const char USAGE[] =
+"%s [-h[elp]] [-v[ersion]] [-d[ebug]] [-user UID] [-group GID]\n"
+"\t[-interface IF] [-db FILE]\n"
+"\t[-new] [-allocate] [-iprange IP IP] [-router IP]... [-nameserver IP]...\n";
+
 
 #define MAC_ADDRSTRLEN 18
 
@@ -267,6 +274,8 @@ offer:
 	*options = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
 
+	if (debug)
+		msg_debug(&((struct dhcp_msg){.data = send_buffer, .length = send_len }), 1);
 	int err = sendto(w->fd,
 		send_buffer, send_len,
 		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
@@ -482,6 +491,8 @@ nack:
 		options[0] = DHCP_OPT_END;
 		DHCP_OPT_CONT(options, send_len);
 
+		if (debug)
+			msg_debug(&((struct dhcp_msg){.data = send_buffer, .length = send_len }), 1);
 		err = sendto(w->fd,
 			send_buffer, send_len,
 			MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
@@ -545,6 +556,8 @@ ack:
 	*options = DHCP_OPT_END;
 	DHCP_OPT_CONT(options, send_len);
 
+	if (debug)
+		msg_debug(&((struct dhcp_msg){.data = send_buffer, .length = send_len }), 1);
 	err = sendto(w->fd,
 		send_buffer, send_len,
 		MSG_DONTWAIT, (struct sockaddr *)&broadcast, sizeof broadcast);
@@ -756,12 +769,15 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	if (argv_cfg.version)
+	{
+		printf("dhcpd " VERSION " - (c) 2013 Fritz Conrad Grimpen\n");
+		exit(0);
+	}
+
 	if (argv_cfg.help || argv_cfg.interface == NULL)
 	{
-		printf("%s [-help] [-version] [-debug] [-user UID] [-group GID]\n"
-			"\t[-interface IF] [-db FILE]\n"
-			"\t[-allocate] [-iprange IP IP] [-router IP]... [-nameserver IP]...\n",
-			argv_cfg.arg0);
+		printf(USAGE, argv_cfg.arg0);
 		exit(0);
 	}
 
@@ -897,7 +913,7 @@ int main(int argc, char **argv)
 
 	ev_signal_init(&sigint_watch, sigint_cb, SIGINT);
 	ev_signal_start(loop, &sigint_watch);
-
+	
 	ev_run(loop, 0);
 
 	if (sqlite3_close(leasedb) != SQLITE_OK)

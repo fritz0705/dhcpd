@@ -61,11 +61,11 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 					state = _ARGV_S_NAMESERVERS_VAL;
 				else if (!strcmp(arg, "-allocate"))
 					out->allocate = true;
-				else if (!strcmp(arg, "-help"))
+				else if (!strncmp(arg, "-h", 2))
 					out->help = true;
-				else if (!strcmp(arg, "-version"))
+				else if (!strncmp(arg, "-v", 2))
 					out->version = true;
-				else if (!strcmp(arg, "-debug"))
+				else if (!strncmp(arg, "-d", 2))
 					out->debug = true;
 				else if (!strcmp(arg, "-new"))
 					out->_new = true;

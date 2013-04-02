@@ -7,7 +7,7 @@
 void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
 {
 	fprintf(stream,
-		"DHCP message from %s:\n"
+		"DHCP message:\n"
 		"\tOP %hhu [%s]\n"
 		"\tHTYPE %hhu HLEN %hhu\n"
 		"\tHOPS %hhu\n"
@@ -17,7 +17,6 @@ void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg)
 		"\tCHADDR %s\n"
 		"\tMAGIC %8X\n"
 		"\tMSG TYPE %s\n",
-		msg->srcaddr,
 		*DHCP_MSG_F_OP(msg->data),
 		(*DHCP_MSG_F_OP(msg->data) == 1 ? "REQUEST" : "REPLY"),
 		*DHCP_MSG_F_HTYPE(msg->data),
