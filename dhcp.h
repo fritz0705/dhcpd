@@ -159,6 +159,12 @@ struct dhcp_lease
 		.prefixlen = 0\
 	}
 
+/**
+ * Prepare new DHCP message from a specified DHCP message
+ *
+ * @param[out] reply Buffer which holds the new DHCP message
+ * @param[in] original Buffer which holds the old DHCP message
+ */
 static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 {
 	*DHCP_MSG_F_XID(reply) = *DHCP_MSG_F_XID(original);
@@ -169,6 +175,15 @@ static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 	ARRAY_COPY(DHCP_MSG_F_CHADDR(reply), DHCP_MSG_F_CHADDR(original), 16);
 }
 
+/**
+ * Generate full response from a specified DHCP message
+ *
+ * @param[out] reply Buffer which holds the new DHCP message
+ * @param[out] options Pointer which will point to next message option
+ * @param[out] send_len Size of the message after filling information
+ * @param[in] msg DHCP message
+ * @param[in] type Type of the new DHCP message
+ */
 static inline void dhcp_msg_reply(uint8_t *reply, uint8_t **options,
 	size_t *send_len, struct dhcp_msg *msg, enum dhcp_msg_type type)
 {

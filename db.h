@@ -66,6 +66,11 @@ struct db_lease
 	time_t allocated_at;
 };
 
+/**
+ * Free any with a db_lease struct related memory areas
+ *
+ * @param[in] lease Struct which memory shall be freed
+ */
 static inline void db_lease_free(struct db_lease *lease)
 {
 	if (lease->routers)
@@ -78,172 +83,64 @@ static inline void db_lease_free(struct db_lease *lease)
 		free(lease->address);
 }
 
-static inline int db_lease_delete(sqlite3 *db, struct db_lease *lease)
-{
-	sqlite3_stmt *stmt;
-	int sqlerr = sqlite3_prepare_v2(db,
-		"DELETE FROM leases\n"
-		"WHERE id = ?;\n", -1, &stmt, NULL);
-	if (sqlerr != SQLITE_OK)
-		return sqlite3_errcode(db);
+/**
+ * Delete record defined by a specified lease from database
+ *
+ * @param[in] db Database descriptor
+ * @param[in] lease Struct which defines the lease which shall be deleted
+ */
+extern int db_lease_delete(sqlite3 *db, struct db_lease *lease);
 
-	sqlite3_bind_int(stmt, 1, lease->id);
+/**
+ * Fetch record by a specified hwaddr from database
+ *
+ * @param[in] db Database descriptor
+ * @param[out] lease Struct which shall hold the database record
+ * @param[in] hwaddr Textual representation of hwaddr
+ */
+extern int db_lease_by_hwaddr(sqlite3 *db, struct db_lease *lease,
+	const char *hwaddr);
 
-	sqlerr = sqlite3_step(stmt);
-	if (stmt != SQLITE_OK)
-	{
-		sqlite3_finalize(stmt);
-		return sqlerr;
-	}
+/**
+ * Fetch record by a specified address from database
+ *
+ * @param[in] db Database descriptor
+ * @param[out] lease Struct which shall hold the database record
+ * @param[in] address Textual representation of address
+ */
+extern int db_lease_by_address(sqlite3 *db, struct db_lease *lease,
+	const char *address);
 
-	sqlite3_finalize(stmt);
-	return SQLITE_OK;
-}
+/**
+ * Insert lease record into database
+ *
+ * @param[in] db Database descriptor
+ * @param[out] lease Struct which holds the record
+ */
+extern int db_insert(sqlite3 *db, struct db_lease *lease);
 
-static inline void db_lease_from_lease(struct db_lease *dbl, struct dhcp_lease *l)
-{
-	size_t routers_len = INET_ADDRSTRLEN * l->routers_cnt + l->routers_cnt;
-	size_t nameservers_len = INET_ADDRSTRLEN * l->nameservers_cnt + l->nameservers_cnt;
+/**
+ * Convert binary representation struct dhcp_lease to text representation
+ * struct db_lease
+ *
+ * @param[out] dbl Struct which shall hold the text representation
+ * @param[in] l Struct which holds the binary representation
+ */
+extern void db_lease_from_lease(struct db_lease *dbl, struct dhcp_lease *l);
 
-	*dbl = (struct db_lease){
-		.id = 0,
-		.address = malloc(INET_ADDRSTRLEN),
-		.prefixlen = l->prefixlen,
-		.hwaddr = NULL,
-		.routers = malloc(routers_len),
-		.nameservers = malloc(nameservers_len),
-		.leasetime = l->leasetime,
-		.allocated = false,
-		.allocated_at = 0
-	};
+/**
+ * Put fetched row into struct db_lease from executed SQL statement
+ *
+ * @param[in] stmt Statement which was executed
+ * @param[out] l Strutc which shall hold the row information
+ */
+extern void db_lease_from_stmt(sqlite3_stmt *stmt, struct db_lease *l);
 
-	dbl->routers[0] = 0;
-	dbl->nameservers[0] = 0;
-
-	iplist_dump(l->routers, l->routers_cnt, dbl->routers, routers_len-1);
-	iplist_dump(l->nameservers, l->nameservers_cnt, dbl->nameservers,
-		nameservers_len-1);
-	inet_ntop(AF_INET, &l->address, dbl->address, INET_ADDRSTRLEN);
-	printf("%s %s\n", dbl->routers, dbl->nameservers);
-}
-
-static inline void db_lease_from_stmt(sqlite3_stmt *stmt, struct db_lease *l)
-{
-	*l= (struct db_lease){
-		.id = sqlite3_column_int(stmt, 0),
-		.address = strdup((const char*)sqlite3_column_text(stmt, 1)),
-		.prefixlen = sqlite3_column_int(stmt, 2),
-		.hwaddr = strdup((const char*)sqlite3_column_text(stmt, 3)),
-		.routers = strdup((const char*)sqlite3_column_text(stmt, 4)),
-		.nameservers = strdup((const char*)sqlite3_column_text(stmt, 5)),
-		.leasetime = sqlite3_column_int(stmt, 6),
-		.allocated = sqlite3_column_int(stmt, 7),
-		.allocated_at = sqlite3_column_int(stmt, 8),
-	};
-}
-
-static inline int db_lease_by_hwaddr(sqlite3 *db,
-	struct db_lease *lease, const char *hwaddr)
-{
-	sqlite3_stmt *stmt;
-	int sqlerr = sqlite3_prepare_v2(db,
-		"SELECT " DB_COLUMNS " FROM leases\n"
-		"WHERE hwaddr = ?;\n", -1, &stmt, NULL);
-	if (sqlerr != SQLITE_OK)
-		return sqlite3_errcode(db);
-
-	sqlite3_bind_text(stmt, 1, hwaddr, -1, NULL);
-
-	sqlerr = sqlite3_step(stmt);
-	if (sqlerr != SQLITE_DONE && sqlerr != SQLITE_ROW)
-	{
-		sqlite3_finalize(stmt);
-		return sqlerr;
-	}
-
-	if (sqlerr != SQLITE_ROW)
-	{
-		lease->id = 0;
-		sqlite3_finalize(stmt);
-		return SQLITE_OK;
-	}
-
-	db_lease_from_stmt(stmt, lease);
-
-	sqlite3_finalize(stmt);
-
-	return SQLITE_OK;
-}
-
-static inline int db_lease_by_address(sqlite3 *db,
-	struct db_lease *lease, const char *address)
-{
-	sqlite3_stmt *stmt;
-	int sqlerr = sqlite3_prepare_v2(db,
-		"SELECT " DB_COLUMNS " FROM leases\n"
-		"WHERE address = ?;\n", -1, &stmt, NULL);
-	if (sqlerr != SQLITE_OK)
-		return sqlite3_errcode(db);
-
-	sqlite3_bind_text(stmt, 1, address, -1, NULL);
-
-	sqlerr = sqlite3_step(stmt);
-	if (sqlerr != SQLITE_DONE && sqlerr != SQLITE_ROW)
-	{
-		sqlite3_finalize(stmt);
-		return sqlerr;
-	}
-
-	if (sqlerr != SQLITE_ROW)
-	{
-		lease->id = 0;
-		sqlite3_finalize(stmt);
-		return SQLITE_OK;
-	}
-
-	db_lease_from_stmt(stmt, lease);
-
-	sqlite3_finalize(stmt);
-
-	return SQLITE_OK;
-}
-
-static inline int db_insert(sqlite3 *db, struct db_lease *lease)
-{
-	sqlite3_stmt *stmt;
-	int sqlerr = sqlite3_prepare_v2(db,
-		"INSERT INTO leases\n"
-		"('address', 'prefixlen', 'hwaddr', 'routers', 'nameservers',\n"
-		"'leasetime', 'allocated', 'allocated_at')\n"
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?);\n", -1, &stmt, NULL);
-	if (sqlerr != SQLITE_OK)
-		return sqlite3_errcode(db);
-
-	sqlite3_bind_text(stmt, 1, lease->address, -1, NULL);
-	sqlite3_bind_int(stmt, 2, lease->prefixlen);
-	sqlite3_bind_text(stmt, 3, lease->hwaddr, -1, NULL);
-
-	if (lease->routers)
-		sqlite3_bind_text(stmt, 4, lease->routers, -1, NULL);
-	if (lease->nameservers)
-		sqlite3_bind_text(stmt, 5, lease->nameservers, -1, NULL);
-	sqlite3_bind_int(stmt, 6, lease->leasetime);
-	sqlite3_bind_int(stmt, 7, lease->allocated);
-	sqlite3_bind_int(stmt, 8, lease->allocated_at);
-
-	sqlerr = sqlite3_step(stmt);
-	if (sqlerr != SQLITE_DONE)
-	{
-		sqlite3_finalize(stmt);
-		return sqlerr;
-	}
-
-	lease->id = sqlite3_last_insert_rowid(db);
-	sqlite3_finalize(stmt);
-
-	return SQLITE_DONE;
-}
-
+/**
+ * Initialize database with schema
+ *
+ * @param[in] db Database descriptor
+ */
 static inline void db_init(sqlite3 *db)
 {
 	sqlite3_exec(db, DB_SCHEMA, NULL, NULL, NULL);

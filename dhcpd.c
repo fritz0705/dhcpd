@@ -1,5 +1,7 @@
 /* (c) 2013 Fritz Conrad Grimpen */
 
+#define DHCP_DHCPD
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -35,8 +37,13 @@
 #include "config.h"
 #include "iplist.h"
 
+#ifndef RECV_BUF_LEN
 #define RECV_BUF_LEN 4096
+#endif
+
+#ifndef SEND_BUF_LEN
 #define SEND_BUF_LEN 4096
+#endif
 
 #define VERSION "0.1"
 
@@ -67,7 +74,13 @@ static const char USAGE[] =
 
 #define MAC_ADDRSTRLEN 18
 
-/* This function converts a L2 MAC address in binary format to a text format */
+/**
+ * Convert MAC address from binary representation to text representation
+ *
+ * @param[in] addr Binary representation
+ * @param[out] dst Buffer to write text presentation
+ * @param[in] s Size of dst
+ */
 static int mac_ntop(char *addr, char *dst, size_t s)
 {
 	return snprintf(dst, s,
@@ -75,17 +88,26 @@ static int mac_ntop(char *addr, char *dst, size_t s)
 		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
 
+/**
+ * Print debugging information with preamble marking incoming and
+ * outgoing packets
+ *
+ * @param[in] msg Message to dump
+ * @param[in] dir Direction of traffic, 0 for incoming and 1 for outgoing
+ */
 static void msg_debug(struct dhcp_msg *msg, int dir)
 {
 	if (dir == 0)
-		fprintf(stderr, "--- INGOING ---\n");
+		fprintf(stderr, "--- INCOMING ---\n");
 	else if (dir == 1)
 		fprintf(stderr, "--- OUTGOING ---\n");
 
 	dhcp_msg_dump(stderr, msg);
 }
 
-/* Callback for DHCPDISCOVER messages */
+/**
+ * Handle DHCPDISCOVER request and reply to that
+ */
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr;
@@ -224,7 +246,10 @@ finalize:
 	db_lease_free(&db_lease);
 }
 
-/* Callback for DHCPREQUEST messages */
+/**
+ * Handle to DHCPREQUEST request and reply to that, and allocate lease if
+ * enabled
+ */
 static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	struct in_addr *requested_addr, *requested_server;
@@ -388,7 +413,9 @@ finalize:
 	return;
 }
 
-/* Callback for DHCPRELEASE messages */
+/**
+ * Handle DHCPRELEASE request and release the lease if it was allocated
+ */
 static void release_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr;
@@ -417,12 +444,16 @@ finalize:
 	db_lease_free(&db_lease);
 }
 
-/* Callback for DHCPDECLINE messages */
+/**
+ * Handle DHCPDECLINE request and do nothing at the moment
+ */
 static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 }
 
-/* Callback for DHCPINFORM messages */
+/**
+ * Handle DHCPINFORM request and reply with the correct information
+ */
 static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
 	int sqlerr;
@@ -496,10 +527,15 @@ finalize:
 	db_lease_free(&db_lease);
 }
 
-/* libev callback */
+/**
+ * Handle libev IO event to socket and call the correct message type
+ * handler.
+ */
 static void req_cb(EV_P_ ev_io *w, int revents)
 {
 	(void)revents;
+
+	sqlite3_exec(leasedb, "BEGIN;", NULL, NULL, NULL);
 
 	/* Initialize address struct passed to recvfrom */
 	struct sockaddr_in src_addr = {
@@ -598,9 +634,31 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 	}
 }
 
+/**
+ * Break event loop to force a shutdown
+ */
 static void sigint_cb(EV_P_ ev_signal *sig, int revents)
 {
+	(void)revents;
 	ev_break(EV_A_ EVBREAK_ALL);
+}
+
+/**
+ * Commit current transaction
+ */
+static void sigusr1_cb(EV_P_ ev_signal *sig, int revents)
+{
+	(void)revents;
+	sqlite3_exec(leasedb, "COMMIT;", NULL, NULL, NULL);
+}
+
+/**
+ * Rollback current transaction
+ */
+static void sigusr2_cb(EV_P_ ev_signal *sig, int revents)
+{
+	(void)revents;
+	sqlite3_exec(leasedb, "ROLLBACK;", NULL, NULL, NULL);
 }
 
 int main(int argc, char **argv)
@@ -753,15 +811,23 @@ int main(int argc, char **argv)
 	struct ev_loop *loop = EV_DEFAULT;
 
 	ev_io read_watch;
-	ev_signal sigint_watch;
+	ev_signal sigint_watch, sigusr1_watch, sigusr2_watch;
 
 	ev_io_init(&read_watch, req_cb, sock, EV_READ);
 	ev_io_start(loop, &read_watch);
 
 	ev_signal_init(&sigint_watch, sigint_cb, SIGINT);
 	ev_signal_start(loop, &sigint_watch);
+
+	ev_signal_init(&sigusr1_watch, sigusr1_cb, SIGUSR1);
+	ev_signal_start(loop, &sigusr1_watch);
+
+	ev_signal_init(&sigusr2_watch, sigusr2_cb, SIGUSR2);
+	ev_signal_start(loop, &sigusr2_watch);
 	
 	ev_run(loop, 0);
+
+	sqlite3_exec(leasedb, "COMMIT;", NULL, NULL, NULL);
 
 	if (sqlite3_close(leasedb) != SQLITE_OK)
 	{

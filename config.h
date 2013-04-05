@@ -39,8 +39,17 @@ struct config
 		.prefixlen = 24\
 	}
 
+/**
+ * Fill configuration struct from argv struct
+ *
+ * @param[out] cfg Destination struct config to write information
+ * @param[in] argv Source argv struct
+ */
 extern bool config_fill(struct config *cfg, struct argv *argv);
 
+/**
+ * Free any with a configuration struct related memory areas
+ */
 static inline void config_free(struct config *cfg)
 {
 	if (cfg->routers)

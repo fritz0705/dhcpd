@@ -77,11 +77,25 @@ struct argv
 		._new = false\
 	}
 
+/**
+ * realloc callback for any allocation done by argv functions
+ */
 extern void *(*argv_realloc)(void*, size_t);
 
+/**
+ * Parse argument list into struct argv and set special argv parameters
+ *
+ * @param[in] argc Count of arguments
+ * @param[in] argv Argument list
+ * @param[out] out Destination struct to write information
+ */
 extern bool argv_parse(int argc, char **argv, struct argv *out);
 
-/* Free any dynamic allocated memory in the supplied struct */
+/**
+ * Free any with a struct argv related memory
+ *
+ * @param[in] out Struct which related memory shall be freed
+ */
 static inline void argv_free(struct argv *out)
 {
 	if (out->routers)
