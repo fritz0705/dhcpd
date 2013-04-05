@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -326,48 +327,30 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 			if (ntohl(cfg.iprange[0].s_addr) <= ntohl(requested_addr->s_addr) &&
 					ntohl(cfg.iprange[1].s_addr) >= ntohl(requested_addr->s_addr))
 			{
-				sqlerr = sqlite3_prepare_v2(leasedb,
-					"INSERT INTO leases\n"
-					"('address', 'routers', 'nameservers', 'prefixlen', 'leasetime',\n"
-					"'allocated', 'hwaddr') VALUES\n"
-					"(?, ?, ?, ?, ?, ?, ?);", -1, &stmt, NULL);
-				if (sqlerr != SQLITE_OK)
-					goto nack;
-
-				lease = (struct dhcp_lease){
-					.address = *requested_addr,
-					.routers = cfg.routers,
-					.routers_cnt = cfg.routers_cnt,
-					.nameservers = cfg.nameservers,
-					.nameservers_cnt = cfg.nameservers_cnt,
-					.leasetime = cfg.leasetime,
-					.prefixlen = cfg.prefixlen
-				};
-
 				char routers[INET_ADDRSTRLEN * lease.routers_cnt + lease.routers_cnt];
-				iplist_dump(lease.routers, lease.routers_cnt, routers, ARRAY_LEN(routers));
 				char nameservers[INET_ADDRSTRLEN * lease.nameservers_cnt + lease.nameservers_cnt];
-				iplist_dump(lease.nameservers, lease.nameservers_cnt, nameservers, ARRAY_LEN(nameservers));
 				char address[INET_ADDRSTRLEN];
-				inet_ntop(AF_INET, &lease.address, address, INET_ADDRSTRLEN);
-				
-				sqlerr = sqlite3_bind_text(stmt, 1, address, -1, NULL);
-				sqlerr = sqlite3_bind_text(stmt, 2, routers, -1, NULL);
-				sqlerr = sqlite3_bind_text(stmt, 3, nameservers, -1, NULL);
-				sqlerr = sqlite3_bind_int(stmt, 4, lease.prefixlen);
-				sqlerr = sqlite3_bind_int(stmt, 5, lease.leasetime);
-				sqlerr = sqlite3_bind_int(stmt, 6, 1);
-				sqlerr = sqlite3_bind_text(stmt, 7, msg->chaddr, -1, NULL);
 
-				sqlerr = sqlite3_step(stmt);
+				iplist_dump(cfg.routers, cfg.routers_cnt, routers, ARRAY_LEN(routers));
+				iplist_dump(cfg.nameservers, cfg.nameservers_cnt, nameservers, ARRAY_LEN(nameservers));
+				inet_ntop(AF_INET, requested_addr, address, INET_ADDRSTRLEN);
+
+				sqlerr = db_insert(leasedb, &(struct db_lease){
+						.address = address,
+						.prefixlen = cfg.prefixlen,
+						.hwaddr = msg->chaddr,
+						.routers = routers,
+						.nameservers = nameservers,
+						.leasetime = cfg.leasetime,
+						.allocated = true,
+						.allocated_at = time(NULL)
+					});
+
 				if (sqlerr != SQLITE_DONE)
 				{
-					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
-					sqlite3_finalize(stmt);
+					dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errstr(sqlerr));
 					goto nack;
 				}
-
-				sqlite3_finalize(stmt);
 
 				goto ack;
 			}
