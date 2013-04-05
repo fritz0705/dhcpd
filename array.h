@@ -13,4 +13,7 @@
 	}
 #define ARRAY_LEN(a) ((sizeof (a)) / (sizeof *(a)))
 
+#define ARRAY_SAFE_COPY(dst, src) (ARRAY_COPY(dst, src, \
+	(ARRAY_LEN(dst) > ARRAY_LEN(src) ? ARRAY_LEN(src) : ARRAY_LEN(dst))))
+
 #endif

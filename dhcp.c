@@ -16,7 +16,7 @@ uint8_t *dhcp_opt_add_lease(uint8_t *options, size_t *_send_len, struct dhcp_lea
 	if (lease->prefixlen > 0)
 	{
 		options[0] = DHCP_OPT_NETMASK;
-		options[1] = 1;
+		options[1] = 4;
 		ARRAY_COPY((options + 2), (uint8_t*)((uint32_t[]){netmask_from_prefixlen(lease->prefixlen)}), 4);
 		DHCP_OPT_CONT(options, send_len);
 	}

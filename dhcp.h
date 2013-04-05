@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <netinet/in.h>
 
@@ -47,20 +48,20 @@
  * +---------------------------------------------------------------+
  */
 
-#define DHCP_MSG_F_OP(m)      ((uint8_t*)(m+0))
-#define DHCP_MSG_F_HTYPE(m)   ((uint8_t*)(m+1))
-#define DHCP_MSG_F_HLEN(m)    ((uint8_t*)(m+2))
-#define DHCP_MSG_F_HOPS(m)    ((uint8_t*)(m+3))
-#define DHCP_MSG_F_XID(m)     ((uint32_t*)(m+4))
-#define DHCP_MSG_F_SECS(m)    ((uint16_t*)(m+8))
-#define DHCP_MSG_F_FLAGS(m)   ((uint16_t*)(m+10))
-#define DHCP_MSG_F_CIADDR(m)  ((uint32_t*)(m+12))
-#define DHCP_MSG_F_YIADDR(m)  ((uint32_t*)(m+16))
-#define DHCP_MSG_F_SIADDR(m)  ((uint32_t*)(m+20))
-#define DHCP_MSG_F_GIADDR(m)  ((uint32_t*)(m+24))
-#define DHCP_MSG_F_CHADDR(m)  ((char*)(m+28))
-#define DHCP_MSG_F_MAGIC(m)   ((uint8_t*)(m+236))
-#define DHCP_MSG_F_OPTIONS(m) ((uint8_t*)(m+240))
+#define DHCP_MSG_F_OP(m)      ((uint8_t*)((m)+0))
+#define DHCP_MSG_F_HTYPE(m)   ((uint8_t*)((m)+1))
+#define DHCP_MSG_F_HLEN(m)    ((uint8_t*)((m)+2))
+#define DHCP_MSG_F_HOPS(m)    ((uint8_t*)((m)+3))
+#define DHCP_MSG_F_XID(m)     ((uint32_t*)((m)+4))
+#define DHCP_MSG_F_SECS(m)    ((uint16_t*)((m)+8))
+#define DHCP_MSG_F_FLAGS(m)   ((uint16_t*)((m)+10))
+#define DHCP_MSG_F_CIADDR(m)  ((uint32_t*)((m)+12))
+#define DHCP_MSG_F_YIADDR(m)  ((uint32_t*)((m)+16))
+#define DHCP_MSG_F_SIADDR(m)  ((uint32_t*)((m)+20))
+#define DHCP_MSG_F_GIADDR(m)  ((uint32_t*)((m)+24))
+#define DHCP_MSG_F_CHADDR(m)  ((char*)((m)+28))
+#define DHCP_MSG_F_MAGIC(m)   ((uint8_t*)((m)+236))
+#define DHCP_MSG_F_OPTIONS(m) ((uint8_t*)((m)+240))
 
 #define DHCP_MSG_LEN    (576)
 #define DHCP_MSG_HDRLEN (240)
@@ -166,6 +167,23 @@ static inline void dhcp_msg_prepare(uint8_t *reply, uint8_t *original)
 	*DHCP_MSG_F_OP(reply) = (*DHCP_MSG_F_OP(reply) == 2 ? 1 : 2);
 	ARRAY_COPY(DHCP_MSG_F_MAGIC(reply), DHCP_MSG_MAGIC, 4);
 	ARRAY_COPY(DHCP_MSG_F_CHADDR(reply), DHCP_MSG_F_CHADDR(original), 16);
+}
+
+static inline void dhcp_msg_reply(uint8_t *reply, uint8_t **options,
+	size_t *send_len, struct dhcp_msg *msg, enum dhcp_msg_type type)
+{
+	*send_len = DHCP_MSG_HDRLEN;
+	memset(reply, 0, DHCP_MSG_LEN);
+	dhcp_msg_prepare(reply, msg->data);
+
+	ARRAY_COPY(DHCP_MSG_F_SIADDR(reply), &msg->sid->sin_addr, 4);
+
+	*options = DHCP_MSG_F_OPTIONS(reply);
+
+	(*options)[0] = DHCP_OPT_MSGTYPE;
+	(*options)[1] = 1;
+	(*options)[2] = type;
+	DHCP_OPT_CONT(*options, *send_len);
 }
 
 static inline bool dhcp_opt_next(uint8_t **cur, struct dhcp_opt *opt, uint8_t *end)
