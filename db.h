@@ -47,6 +47,9 @@ static const char DB_SCHEMA[] =
 		.allocated_at = 0\
 	}
 
+#define DB_COLUMNS "id, address, prefixlen, hwaddr, routers, nameservers,\n"\
+	"leasetime, allocated, allocated_at"
+
 struct db_lease
 {
 	unsigned int id;
@@ -124,13 +127,27 @@ static inline void db_lease_from_lease(struct db_lease *dbl, struct dhcp_lease *
 	printf("%s %s\n", dbl->routers, dbl->nameservers);
 }
 
+static inline void db_lease_from_stmt(sqlite3_stmt *stmt, struct db_lease *l)
+{
+	*l= (struct db_lease){
+		.id = sqlite3_column_int(stmt, 0),
+		.address = strdup((const char*)sqlite3_column_text(stmt, 1)),
+		.prefixlen = sqlite3_column_int(stmt, 2),
+		.hwaddr = strdup((const char*)sqlite3_column_text(stmt, 3)),
+		.routers = strdup((const char*)sqlite3_column_text(stmt, 4)),
+		.nameservers = strdup((const char*)sqlite3_column_text(stmt, 5)),
+		.leasetime = sqlite3_column_int(stmt, 6),
+		.allocated = sqlite3_column_int(stmt, 7),
+		.allocated_at = sqlite3_column_int(stmt, 8),
+	};
+}
+
 static inline int db_lease_by_hwaddr(sqlite3 *db,
 	struct db_lease *lease, const char *hwaddr)
 {
 	sqlite3_stmt *stmt;
 	int sqlerr = sqlite3_prepare_v2(db,
-		"SELECT id, address, prefixlen, hwaddr, routers, nameservers, leasetime,\n"
-		"allocated, allocated_at FROM leases\n"
+		"SELECT " DB_COLUMNS " FROM leases\n"
 		"WHERE hwaddr = ?;\n", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
 		return sqlite3_errcode(db);
@@ -151,17 +168,40 @@ static inline int db_lease_by_hwaddr(sqlite3 *db,
 		return SQLITE_OK;
 	}
 
-	*lease = (struct db_lease){
-		.id = sqlite3_column_int(stmt, 0),
-		.address = strdup((const char*)sqlite3_column_text(stmt, 1)),
-		.prefixlen = sqlite3_column_int(stmt, 2),
-		.hwaddr = strdup((const char*)sqlite3_column_text(stmt, 3)),
-		.routers = strdup((const char*)sqlite3_column_text(stmt, 4)),
-		.nameservers = strdup((const char*)sqlite3_column_text(stmt, 5)),
-		.leasetime = sqlite3_column_int(stmt, 6),
-		.allocated = sqlite3_column_int(stmt, 7),
-		.allocated_at = sqlite3_column_int(stmt, 8)
-	};
+	db_lease_from_stmt(stmt, lease);
+
+	sqlite3_finalize(stmt);
+
+	return SQLITE_OK;
+}
+
+static inline int db_lease_by_address(sqlite3 *db,
+	struct db_lease *lease, const char *address)
+{
+	sqlite3_stmt *stmt;
+	int sqlerr = sqlite3_prepare_v2(db,
+		"SELECT " DB_COLUMNS " FROM leases\n"
+		"WHERE address = ?;\n", -1, &stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		return sqlite3_errcode(db);
+
+	sqlite3_bind_text(stmt, 1, address, -1, NULL);
+
+	sqlerr = sqlite3_step(stmt);
+	if (sqlerr != SQLITE_DONE && sqlerr != SQLITE_ROW)
+	{
+		sqlite3_finalize(stmt);
+		return sqlerr;
+	}
+
+	if (sqlerr != SQLITE_ROW)
+	{
+		lease->id = 0;
+		sqlite3_finalize(stmt);
+		return SQLITE_OK;
+	}
+
+	db_lease_from_stmt(stmt, lease);
 
 	sqlite3_finalize(stmt);
 
