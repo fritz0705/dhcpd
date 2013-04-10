@@ -14,7 +14,7 @@ L_CAP_NG=$(shell pkg-config --libs libcap-ng)
 endif
 
 override LDFLAGS := $(LDFLAGS)
-override CFLAGS := -Wall -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
+override CFLAGS := -Wall -Wextra -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
 override CPPFLAGS := $(CPPFLAGS)
 
 ifdef DEBUG

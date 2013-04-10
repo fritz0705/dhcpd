@@ -25,7 +25,7 @@ uint8_t *dhcp_opt_add_lease(uint8_t *options, size_t *_send_len, struct dhcp_lea
 	{
 		options[0] = DHCP_OPT_ROUTER;
 		options[1] = lease->routers_cnt * 4;
-		for (off_t i = 0; i < lease->routers_cnt; ++i)
+		for (size_t i = 0; i < lease->routers_cnt; ++i)
 			*(struct in_addr *)(options + 2 + (i * 4)) = lease->routers[i];
 		DHCP_OPT_CONT(options, send_len);
 	}

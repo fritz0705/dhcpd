@@ -110,6 +110,8 @@ static void msg_debug(struct dhcp_msg *msg, int dir)
  */
 static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	(void)EV_A;
+
 	int sqlerr;
 	struct db_lease db_lease = DB_LEASE_EMPTY;
 
@@ -252,6 +254,8 @@ finalize:
  */
 static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	(void)EV_A;
+
 	struct in_addr *requested_addr, *requested_server;
 	uint8_t *options;
 	struct dhcp_opt current_opt;
@@ -418,6 +422,9 @@ finalize:
  */
 static void release_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	(void)EV_A;
+	(void)w;
+
 	int sqlerr;
 
 	struct db_lease db_lease = DB_LEASE_EMPTY;
@@ -449,6 +456,9 @@ finalize:
  */
 static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	(void)EV_A;
+	(void)w;
+	(void)msg;
 }
 
 /**
@@ -456,6 +466,8 @@ static void decline_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
  */
 static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 {
+	(void)EV_A;
+
 	int sqlerr;
 
 	struct db_lease db_lease = DB_LEASE_EMPTY;
@@ -640,6 +652,9 @@ static void req_cb(EV_P_ ev_io *w, int revents)
 static void sigint_cb(EV_P_ ev_signal *sig, int revents)
 {
 	(void)revents;
+	(void)EV_A;
+	(void)sig;
+
 	ev_break(EV_A_ EVBREAK_ALL);
 }
 
@@ -649,6 +664,9 @@ static void sigint_cb(EV_P_ ev_signal *sig, int revents)
 static void sigusr1_cb(EV_P_ ev_signal *sig, int revents)
 {
 	(void)revents;
+	(void)EV_A;
+	(void)sig;
+
 	sqlite3_exec(leasedb, "COMMIT;", NULL, NULL, NULL);
 }
 
@@ -658,6 +676,9 @@ static void sigusr1_cb(EV_P_ ev_signal *sig, int revents)
 static void sigusr2_cb(EV_P_ ev_signal *sig, int revents)
 {
 	(void)revents;
+	(void)EV_A;
+	(void)sig;
+
 	sqlite3_exec(leasedb, "ROLLBACK;", NULL, NULL, NULL);
 }
 
