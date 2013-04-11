@@ -26,6 +26,8 @@ struct config
 
 	uint32_t leasetime;
 	uint8_t prefixlen;
+
+	uint32_t gc;
 };
 
 #define CONFIG_EMPTY {\
@@ -36,7 +38,8 @@ struct config
 		.nameservers_cnt = 0,\
 		.iprange = {{0}, {0}},\
 		.leasetime = 3600,\
-		.prefixlen = 24\
+		.prefixlen = 24,\
+		.gc = 0\
 	}
 
 /**

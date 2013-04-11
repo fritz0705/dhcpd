@@ -45,6 +45,9 @@ struct argv
 	/* -leasetime INT */
 	char *leasetime;
 
+	/* -gc INT */
+	char *gc;
+
 	/* -allocate */
 	bool allocate;
 	/* -help */

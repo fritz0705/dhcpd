@@ -309,6 +309,8 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		};
 		db_lease_from_lease(&db_lease, &lease);
 		db_lease.hwaddr = msg->chaddr;
+		db_lease.allocated = 1;
+		db_lease.allocated_at = (time_t)ev_now(EV_A);
 
 		sqlerr = db_insert(leasedb, &db_lease);
 
@@ -682,6 +684,53 @@ static void sigusr2_cb(EV_P_ ev_signal *sig, int revents)
 	sqlite3_exec(leasedb, "ROLLBACK;", NULL, NULL, NULL);
 }
 
+/**
+ * Garbage collection for old leases
+ */
+static void leasegc_cb(EV_P_ ev_timer *timer, int revents)
+{
+	(void)revents;
+
+	sqlite3_stmt *stmt, *drop_stmt;
+	int sqlerr = 0;
+	struct db_lease lease;
+
+	sqlerr = sqlite3_prepare_v2(leasedb,
+		"DELETE FROM leases\n"
+		"WHERE id = ?;\n", -1, &drop_stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		return;
+
+	sqlerr = sqlite3_prepare_v2(leasedb,
+		"SELECT " DB_COLUMNS "\n"
+		"FROM leases\n"
+		"WHERE allocated = 1;\n", -1, &stmt, NULL);
+	if (sqlerr != SQLITE_OK)
+		return;
+
+	while ((sqlerr = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		db_lease_from_stmt(stmt, &lease);
+
+		time_t expired_after = lease.allocated_at + lease.leasetime +
+			((lease.leasetime > timer->repeat) ? timer->repeat : lease.leasetime);
+		if (ev_now(EV_A) > expired_after)
+		{
+			if (debug)
+				fprintf(stderr, "Removing lease %d for %s\n", lease.id, lease.address);
+			sqlite3_bind_int(drop_stmt, 1, lease.id);
+			sqlite3_step(drop_stmt);
+			sqlite3_reset(drop_stmt);
+		}
+	}
+
+	if (sqlerr != SQLITE_DONE)
+		dhcpd_error(0, 0, "sqlite3: %s", sqlite3_errmsg(leasedb));
+	
+	sqlite3_finalize(stmt);
+	sqlite3_finalize(drop_stmt);
+}
+
 int main(int argc, char **argv)
 {
 	struct argv argv_cfg = ARGV_EMPTY;
@@ -833,6 +882,7 @@ int main(int argc, char **argv)
 
 	ev_io read_watch;
 	ev_signal sigint_watch, sigusr1_watch, sigusr2_watch;
+	ev_timer leasegc_watch;
 
 	ev_io_init(&read_watch, req_cb, sock, EV_READ);
 	ev_io_start(loop, &read_watch);
@@ -845,6 +895,12 @@ int main(int argc, char **argv)
 
 	ev_signal_init(&sigusr2_watch, sigusr2_cb, SIGUSR2);
 	ev_signal_start(loop, &sigusr2_watch);
+
+	if (cfg.gc > 0)
+	{
+		ev_timer_init(&leasegc_watch, leasegc_cb, 0., cfg.gc);
+		ev_timer_again(loop, &leasegc_watch);
+	}
 	
 	ev_run(loop, 0);
 

@@ -28,7 +28,9 @@ enum argv_p_state
 	/* Value for -prefixlen */
 	_ARGV_S_PREFIXLEN_VAL,
 	/* Value for -leasetime */
-	_ARGV_S_LEASETIME_VAL
+	_ARGV_S_LEASETIME_VAL,
+	/* Value for -gc */
+	_ARGV_S_GC_VAL
 };
 
 bool argv_parse(int argc, char **argv, struct argv *out)
@@ -59,6 +61,8 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 					state = _ARGV_S_ROUTERS_VAL;
 				else if (!strcmp(arg, "-nameserver"))
 					state = _ARGV_S_NAMESERVERS_VAL;
+				else if (!strcmp(arg, "-gc"))
+					state = _ARGV_S_GC_VAL;
 				else if (!strcmp(arg, "-allocate"))
 					out->allocate = true;
 				else if (!strncmp(arg, "-h", 2))
@@ -133,6 +137,11 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 
 			case _ARGV_S_PREFIXLEN_VAL:
 				out->prefixlen = arg;
+				state = _ARGV_S_ARGUMENT;
+				break;
+
+			case _ARGV_S_GC_VAL:
+				out->gc = arg;
 				state = _ARGV_S_ARGUMENT;
 				break;
 		}
