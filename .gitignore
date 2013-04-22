@@ -2,6 +2,7 @@
 *.o
 dhcpd
 dhcpstress
+dhcpctl
 tools/dump-schema
 schema.sql
 
