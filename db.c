@@ -1,5 +1,11 @@
 #include "db.h"
 
+#ifdef DEBUG
+#define PRINT_ERROR(db) fprintf(stderr, "sqlite3: %s\n", sqlite3_errmsg(db))
+#else
+#define PRINT_ERROR(db) ;
+#endif
+
 void db_lease_from_stmt(sqlite3_stmt *stmt, struct db_lease *l)
 {
 	*l= (struct db_lease){
@@ -29,6 +35,7 @@ int db_lease_delete(sqlite3 *db, struct db_lease *lease)
 	sqlerr = sqlite3_step(stmt);
 	if (stmt != SQLITE_OK)
 	{
+		PRINT_ERROR(db);
 		sqlite3_finalize(stmt);
 		return sqlerr;
 	}
@@ -45,13 +52,17 @@ int db_lease_by_hwaddr(sqlite3 *db, struct db_lease *lease,
 		"SELECT " DB_COLUMNS " FROM leases\n"
 		"WHERE hwaddr = ?;\n", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
+	{
+		PRINT_ERROR(db);
 		return sqlite3_errcode(db);
+	}
 
 	sqlite3_bind_text(stmt, 1, hwaddr, -1, NULL);
 
 	sqlerr = sqlite3_step(stmt);
 	if (sqlerr != SQLITE_DONE && sqlerr != SQLITE_ROW)
 	{
+		PRINT_ERROR(db);
 		sqlite3_finalize(stmt);
 		return sqlerr;
 	}
@@ -78,13 +89,17 @@ int db_lease_by_address(sqlite3 *db, struct db_lease *lease,
 		"SELECT " DB_COLUMNS " FROM leases\n"
 		"WHERE address = ?;\n", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
+	{
+		PRINT_ERROR(db);
 		return sqlite3_errcode(db);
+	}
 
 	sqlite3_bind_text(stmt, 1, address, -1, NULL);
 
 	sqlerr = sqlite3_step(stmt);
 	if (sqlerr != SQLITE_DONE && sqlerr != SQLITE_ROW)
 	{
+		PRINT_ERROR(db);
 		sqlite3_finalize(stmt);
 		return sqlerr;
 	}
@@ -112,7 +127,10 @@ int db_insert(sqlite3 *db, struct db_lease *lease)
 		"'leasetime', 'allocated', 'allocated_at')\n"
 		"VALUES (?, ?, ?, ?, ?, ?, ?, ?);\n", -1, &stmt, NULL);
 	if (sqlerr != SQLITE_OK)
+	{
+		PRINT_ERROR(db);
 		return sqlite3_errcode(db);
+	}
 
 	sqlite3_bind_text(stmt, 1, lease->address, -1, NULL);
 	sqlite3_bind_int(stmt, 2, lease->prefixlen);
@@ -129,6 +147,7 @@ int db_insert(sqlite3 *db, struct db_lease *lease)
 	sqlerr = sqlite3_step(stmt);
 	if (sqlerr != SQLITE_DONE)
 	{
+		PRINT_ERROR(db);
 		sqlite3_finalize(stmt);
 		return sqlerr;
 	}
