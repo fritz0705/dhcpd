@@ -24,6 +24,7 @@ static int main_stop(int argc, char **argv);
 static int main_restart(int argc, char **argv);
 static int main_flush(int argc, char **argv);
 static int main_help(int argc, char **argv);
+static int main_mkdb(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
@@ -46,9 +47,40 @@ int main(int argc, char **argv)
 			command = main_flush;
 		else if (!strcmp(arg, "help"))
 			command = main_help;
+		else if (!strcmp(arg, "mkdb"))
+			command = main_mkdb;
 	}
 
 	return command(argc - 1, argv + 1);
+}
+
+static int main_mkdb(int argc, char **argv)
+{
+	if (argc < 3)
+		return main_help(argc, argv);
+
+	if (!strcmp(argv[1], "file"))
+	{
+		if (sqlite3_open(argv[2], &db) != SQLITE_OK)
+			dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(db));
+	}
+	else if (!strcmp(argv[1], "interface") || !strcmp(argv[1], "if"))
+	{
+		size_t db_file_len = strlen(argv[2]) + sizeof ".db" + 1;
+		char db_file[db_file_len];
+
+		strcpy(db_file, argv[2]);
+		strcpy(db_file + db_file_len - sizeof ".db" - 1, ".db");
+		db_file[db_file_len - 1] = 0;
+		
+		if (sqlite3_open(db_file, &db) != SQLITE_OK)
+			dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(db));
+	}
+
+	db_init(db);
+	sqlite3_close(db);
+
+	return 0;
 }
 
 static int main_lease(int argc, char **argv)
@@ -380,6 +412,7 @@ static int main_help(int argc, char **argv)
 		"dhcpctl stop [pidfile FILE]\n"
 		"dhcpctl restart [nodaemon] [binary FILE] [pidfile FILE] [config FILE] [-- [ARG]...]\n"
 		"dhcpctl flush [pidfile FILE]\n"
+		"dhcpctl mkdb [interface IF|file FILE]\n"
 		"dhcpctl help\n");
 	return 0;
 }
