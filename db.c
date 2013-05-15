@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "db.h"
 
 #ifdef DEBUG
@@ -178,10 +180,9 @@ void db_lease_from_lease(struct db_lease *dbl, struct dhcp_lease *l)
 	dbl->routers[0] = 0;
 	dbl->nameservers[0] = 0;
 
-	iplist_dump(l->routers, l->routers_cnt, dbl->routers, routers_len-1);
+	iplist_dump(l->routers, l->routers_cnt, dbl->routers, routers_len);
 	iplist_dump(l->nameservers, l->nameservers_cnt, dbl->nameservers,
-		nameservers_len-1);
+		nameservers_len);
 	inet_ntop(AF_INET, &l->address, dbl->address, INET_ADDRSTRLEN);
-	printf("%s %s\n", dbl->routers, dbl->nameservers);
 }
 
