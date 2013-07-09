@@ -881,7 +881,7 @@ int main(int argc, char **argv)
 	struct ev_loop *loop = EV_DEFAULT;
 
 	ev_io read_watch;
-	ev_signal sigint_watch, sigusr1_watch, sigusr2_watch;
+	ev_signal sigint_watch, sigusr1_watch, sigusr2_watch, sigterm_watch;
 	ev_timer leasegc_watch;
 
 	ev_io_init(&read_watch, req_cb, sock, EV_READ);
@@ -889,6 +889,9 @@ int main(int argc, char **argv)
 
 	ev_signal_init(&sigint_watch, sigint_cb, SIGINT);
 	ev_signal_start(loop, &sigint_watch);
+
+	ev_signal_init(&sigterm_watch, sigint_cb, SIGTERM);
+	ev_signal_start(loop, &sigterm_watch);
 
 	ev_signal_init(&sigusr1_watch, sigusr1_cb, SIGUSR1);
 	ev_signal_start(loop, &sigusr1_watch);
