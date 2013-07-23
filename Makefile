@@ -21,13 +21,7 @@ ifdef DEBUG
 override CFLAGS += -O0 -g
 endif
 
-all: dhcpd dhcpstress dhcpctl schema.sql
-
-schema.sql: tools/dump-schema
-	./tools/dump-schema > $@
-
-tools/dump-schema: tools/dump-schema.o
-	$(LD) $(LDFLAGS) -o $@ $^
+all: dhcpd dhcpstress dhcpctl
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
 	$(LD) $(LDFLAGS) -lev -lsqlite3 $(L_CAP_NG) -o $@ $^
@@ -43,8 +37,6 @@ dhcpctl: dhcpctl.o db.o
 
 clean:
 	$(RM) dhcpd dhcpstress dhcpctl
-	$(RM) tools/dump-schema
-	$(RM) schema.sql
 	$(FIND) ./ -name '*.o' -type f -delete
 
 fullclean:
@@ -56,7 +48,6 @@ config.o: config.h
 dhcp.o: dhcp.h
 db.o: db.h
 dhcpstress.o: error.h dhcp.h
-tools/dump-schema.o: db.h
 
 dhcp.h: array.h
 db.h: iplist.h dhcp.h
