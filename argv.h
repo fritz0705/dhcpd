@@ -21,8 +21,7 @@ struct argv
 
 	/* -interface IF */
 	char *interface;
-	/* -db FILE */
-	char *db;
+
 	/* -user UID */
 	char *user;
 	/* -group GID */
@@ -32,12 +31,12 @@ struct argv
 	char *iprange[2];
 
 	/* -router IP */
-	char **routers;
 	size_t routers_cnt;
+	char **routers;
 
 	/* -nameserver IP */
-	char **nameservers;
 	size_t nameservers_cnt;
+	char **nameservers;
 
 	/* -prefixlen INT */
 	char *prefixlen;
@@ -45,19 +44,12 @@ struct argv
 	/* -leasetime INT */
 	char *leasetime;
 
-	/* -gc INT */
-	char *gc;
-
-	/* -allocate */
-	bool allocate;
 	/* -help */
 	bool help;
 	/* -version */
 	bool version;
 	/* -debug */
 	bool debug;
-	/* -new */
-	bool _new;
 };
 
 #define ARGV_EMPTY {\
@@ -65,7 +57,6 @@ struct argv
 		.argc = 0,\
 		.arg0 = NULL,\
 		.interface = NULL,\
-		.db = NULL,\
 		.user = NULL,\
 		.group = NULL,\
 		.iprange = { NULL, NULL },\
@@ -73,11 +64,9 @@ struct argv
 		.routers_cnt = 0,\
 		.nameservers = NULL,\
 		.nameservers_cnt = 0,\
-		.allocate = false,\
 		.help = false,\
 		.version = false,\
 		.debug = false,\
-		._new = false\
 	}
 
 /**
