@@ -21,7 +21,7 @@ ifdef DEBUG
 override CFLAGS += -O0 -g
 endif
 
-all: dhcpd dhcpstress dhcpctl
+all: dhcpd dhcpstress
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
 	$(LD) $(LDFLAGS) -lev -lsqlite3 $(L_CAP_NG) -o $@ $^
@@ -29,14 +29,11 @@ dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
-dhcpctl: dhcpctl.o db.o
-	$(LD) $(LDFLAGS) -lsqlite3 -o $@ $^
-
 %.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 clean:
-	$(RM) dhcpd dhcpstress dhcpctl
+	$(RM) dhcpd dhcpstress
 	$(FIND) ./ -name '*.o' -type f -delete
 
 fullclean:
