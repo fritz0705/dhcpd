@@ -72,7 +72,7 @@ struct argv
 /**
  * realloc callback for any allocation done by argv functions
  */
-extern void *(*argv_realloc)(void*, size_t);
+extern void *(* const argv_realloc)(void*, size_t);
 
 /**
  * Parse argument list into struct argv and set special argv parameters

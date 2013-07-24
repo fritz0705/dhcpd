@@ -2,9 +2,10 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <getopt.h>
+#include <stdio.h>
 
-static struct option long_options[] =
+static const struct option long_options[] =
 	{
 		{"version",     no_argument,       0, 'V'},
 		{"help",        no_argument,       0, 'h'},
@@ -30,7 +31,7 @@ static struct option long_options[] =
 		{0, 0, 0, 0}
 	};
 
-static const void *(* argv_realloc)(void *, size_t) = realloc;
+void *(* const argv_realloc)(void *, size_t) = realloc;
 
 bool argv_parse(int argc, char **argv, struct argv *out)
 {
@@ -50,7 +51,7 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 			break;
 		}
 
-		switch (state)
+		switch (idx)
 		{
 			case 'h':
 				out->help = true;
@@ -62,10 +63,6 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 
 			case 'd':
 				out->debug = true;
-				break;
-
-			case 't':
-				out->argerror = optarg;
 				break;
 
 			case 'i':
