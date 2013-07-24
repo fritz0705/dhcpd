@@ -128,8 +128,9 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 	if (!db_lease.id)
 	{
-		if (!cfg.argv->allocate)
-			goto finalize;
+		//We always allocate IPs ... somehow
+		//if (!cfg.argv->allocate)
+		//	goto finalize;
 		lease = (struct dhcp_lease){
 			.routers = cfg.routers,
 			.routers_cnt = cfg.routers_cnt,
@@ -285,8 +286,9 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 	if (!db_lease.id)
 	{
-		if (!cfg.argv->allocate)
-			goto nack;
+//We always allocate IPs ... somehow
+//		if (!cfg.argv->allocate)
+//			goto nack;
 		if (!IPRANGE_IN2(cfg.iprange, *requested_addr))
 			goto nack;
 		lease = (struct dhcp_lease){
@@ -478,8 +480,9 @@ static void inform_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	if (!db_lease.id)
 	{
 no_specific_lease:
-		if (!cfg.argv->allocate)
-			goto finalize;
+// We always allocate IPs ... somehow
+//		if (!cfg.argv->allocate)
+//			goto finalize;
 		lease = (struct dhcp_lease){
 			.routers = cfg.routers,
 			.routers_cnt = cfg.routers_cnt,
@@ -800,8 +803,9 @@ int main(int argc, char **argv)
 	memset(send_buffer, 0, ARRAY_LEN(send_buffer));
 	memset(recv_buffer, 0, ARRAY_LEN(recv_buffer));
 
-	if (argv_cfg._new && !argv_cfg.allocate)
-		dhcpd_error(0, 0, "Hint: -new doesn't make any sense without -allocate");
+//No need in our scenario ...
+//	if (argv_cfg._new && !argv_cfg.allocate)
+//		dhcpd_error(0, 0, "Hint: -new doesn't make any sense without -allocate");
 
 	if (if_nametoindex(argv_cfg.interface) == 0)
 		dhcpd_error(1, errno, argv_cfg.interface);
