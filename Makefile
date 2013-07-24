@@ -13,8 +13,8 @@ ifdef WITH_CAP_DROP
 L_CAP_NG=$(shell pkg-config --libs libcap-ng)
 endif
 
-override LDFLAGS := $(LDFLAGS)
-override CFLAGS := -Wall -Wextra -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
+override LDFLAGS := $(LDFLAGS) -flto -O3
+override CFLAGS := -Wall -Wextra -Werror -fno-strict-aliasing -flto -O3 -std=gnu11 -pedantic $(CFLAGS)
 override CPPFLAGS := $(CPPFLAGS)
 
 ifdef DEBUG
@@ -24,7 +24,7 @@ endif
 all: dhcpd dhcpstress
 
 dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
-	$(LD) $(LDFLAGS) -lev -lsqlite3 $(L_CAP_NG) -o $@ $^
+	$(LD) $(LDFLAGS) -o $@ $^ -lev -lsqlite3 $(L_CAP_NG)
 
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
