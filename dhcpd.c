@@ -810,8 +810,9 @@ int main(int argc, char **argv)
 	if (if_nametoindex(argv_cfg.interface) == 0)
 		dhcpd_error(1, errno, argv_cfg.interface);
 
-	bool alloc_db = false;
+//	bool alloc_db = false;
 
+/*
 	if (argv_cfg.db == NULL)
 	{
 		size_t len = strlen(argv_cfg.interface) + sizeof(".db") + 1;
@@ -819,15 +820,16 @@ int main(int argc, char **argv)
 		snprintf(argv_cfg.db, len, "%s.db", argv_cfg.interface);
 		alloc_db = true;
 	}
+*/
 
 	if (argv_cfg.debug)
 		debug = true;
 
-	if (sqlite3_open(argv_cfg.db, &leasedb) != SQLITE_OK)
-		dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
+//	if (sqlite3_open(argv_cfg.db, &leasedb) != SQLITE_OK)
+//		dhcpd_error(1, 0, "Error while opening lease database: %s", sqlite3_errmsg(leasedb));
 
-	if (argv_cfg._new)
-		db_init(leasedb);
+//	if (argv_cfg._new)
+//		db_init(leasedb);
 
 	int sock;
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -911,8 +913,8 @@ int main(int argc, char **argv)
 
 	config_free(&cfg);
 	argv_free(&argv_cfg);
-	if (alloc_db)
-		free(argv_cfg.db);
+//	if (alloc_db)
+//		free(argv_cfg.db);
 
 	exit(0);
 }
