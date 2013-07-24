@@ -36,9 +36,6 @@ clean:
 	$(RM) dhcpd dhcpstress
 	$(FIND) ./ -name '*.o' -type f -delete
 
-fullclean:
-	$(FIND) ./ -name '*.db' -type f -delete
-
 dhcpd.o: array.h dhcp.h argv.h error.h db.h config.h iplist.h
 argv.o: argv.h
 config.o: config.h
