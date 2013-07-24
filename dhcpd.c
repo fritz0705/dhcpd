@@ -181,20 +181,11 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 	unalloc_lease = true;
 
-	if (!inet_pton(AF_INET, db_lease.address, &lease.address))
-		goto invalid_lease_entry;
-
-	if (db_lease.routers)
-		if (!iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt))
-			goto invalid_lease_entry;
-
-	if (db_lease.nameservers)
-		if (!iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
-			goto invalid_lease_entry;
-
-	if (0)
-	{
-invalid_lease_entry:
+	if (
+		(!inet_pton(AF_INET, db_lease.address, &lease.address)) ||
+		(db_lease.routers && !iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt)) ||
+		(db_lease.nameservers && !iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
+		) {
 		fprintf(stderr, "Invalid lease entry for %s:\n"
 				"\tAddress: %s\n"
 				"\tRouters: %s\n"
