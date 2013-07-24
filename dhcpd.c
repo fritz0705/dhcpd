@@ -523,7 +523,7 @@ ack:
 	if (err < 0)
 		dhcpd_error(0, 1, "Could not send DHCPACK");
 
-finalize:
+//finalize:
 	if (unalloc_lease)
 	{
 		if (lease.routers)
