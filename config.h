@@ -8,9 +8,6 @@
 
 #include "argv.h"
 
-#ifndef DHCPD_CONFIG_H_
-#define DHCPD_CONFIG_H_
-
 struct config
 {
 	struct argv *argv;
@@ -26,8 +23,6 @@ struct config
 
 	uint32_t leasetime;
 	uint8_t prefixlen;
-
-	uint32_t gc;
 };
 
 #define CONFIG_EMPTY {\
@@ -38,8 +33,7 @@ struct config
 		.nameservers_cnt = 0,\
 		.iprange = {{0}, {0}},\
 		.leasetime = 3600,\
-		.prefixlen = 24,\
-		.gc = 0\
+		.prefixlen = 24\
 	}
 
 /**
@@ -60,6 +54,3 @@ static inline void config_free(struct config *cfg)
 	if (cfg->nameservers)
 		cfg->nameservers = realloc(cfg->nameservers, cfg->nameservers_cnt = 0);
 }
-
-#endif
-

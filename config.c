@@ -29,9 +29,6 @@ bool config_fill(struct config *cfg, struct argv *argv)
 	if (argv->prefixlen)
 		cfg->prefixlen = atoi(argv->prefixlen);
 
-	if (argv->gc)
-		cfg->gc = atoi(argv->gc);
-
 	return true;
 
 	switch (1)

@@ -1,8 +1,5 @@
 #pragma once
 
-#ifndef DHCPD_ARGV_H_
-#define DHCPD_ARGV_H_
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -21,8 +18,7 @@ struct argv
 
 	/* -interface IF */
 	char *interface;
-	/* -db FILE */
-	char *db;
+
 	/* -user UID */
 	char *user;
 	/* -group GID */
@@ -32,12 +28,12 @@ struct argv
 	char *iprange[2];
 
 	/* -router IP */
-	char **routers;
 	size_t routers_cnt;
+	char **routers;
 
 	/* -nameserver IP */
-	char **nameservers;
 	size_t nameservers_cnt;
+	char **nameservers;
 
 	/* -prefixlen INT */
 	char *prefixlen;
@@ -45,19 +41,12 @@ struct argv
 	/* -leasetime INT */
 	char *leasetime;
 
-	/* -gc INT */
-	char *gc;
-
-	/* -allocate */
-	bool allocate;
 	/* -help */
 	bool help;
 	/* -version */
 	bool version;
 	/* -debug */
 	bool debug;
-	/* -new */
-	bool _new;
 };
 
 #define ARGV_EMPTY {\
@@ -65,7 +54,6 @@ struct argv
 		.argc = 0,\
 		.arg0 = NULL,\
 		.interface = NULL,\
-		.db = NULL,\
 		.user = NULL,\
 		.group = NULL,\
 		.iprange = { NULL, NULL },\
@@ -73,17 +61,15 @@ struct argv
 		.routers_cnt = 0,\
 		.nameservers = NULL,\
 		.nameservers_cnt = 0,\
-		.allocate = false,\
 		.help = false,\
 		.version = false,\
 		.debug = false,\
-		._new = false\
 	}
 
 /**
  * realloc callback for any allocation done by argv functions
  */
-extern void *(*argv_realloc)(void*, size_t);
+extern void *(* const argv_realloc)(void*, size_t);
 
 /**
  * Parse argument list into struct argv and set special argv parameters
@@ -106,6 +92,3 @@ static inline void argv_free(struct argv *out)
 	if (out->nameservers)
 		out->nameservers = argv_realloc(out->nameservers, out->nameservers_cnt = 0);
 }
-
-#endif
-

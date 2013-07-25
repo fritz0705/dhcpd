@@ -8,9 +8,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#ifndef DHCPD_IPLIST_H_
-#define DHCPD_IPLIST_H_
-
 struct iplist
 {
 	struct in_addr *ips;
@@ -101,6 +98,3 @@ return_false:
 #define IPRANGE_IN2(r, a) IPRANGE_IN(r[0], r[1], a)
 
 #define IPRANGE_FOREACH(l, u, v) for ((v) = ntohl(l.s_addr); (v) <= ntohl(u.s_addr); ++(v))
-
-#endif
-

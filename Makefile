@@ -1,64 +1,49 @@
 .PHONY: all install clean
+.SUFFIXES: .d
 
 CC := gcc
 LD := $(CC)
+CXX := g++
 
-FIND ?= find
+GREP ?= grep
 
-ifeq ($(shell uname),Linux)
-WITH_CAP_DROP ?= yes
-endif
-
-ifdef WITH_CAP_DROP
-L_CAP_NG=$(shell pkg-config --libs libcap-ng)
-endif
-
-override LDFLAGS := $(LDFLAGS)
-override CFLAGS := -Wall -Wextra -Werror -fno-strict-aliasing -O3 -std=gnu11 -pedantic $(CFLAGS)
-override CPPFLAGS := $(CPPFLAGS)
+PKGCONFIG ?= pkg-config
 
 ifdef DEBUG
-override CFLAGS += -O0 -g
+LDFLAGS += -g -O0
+CFLAGS += -g -O0
+CXXFLAGS += -g -O0
+else
+LDFLAGS += -O3 -flto
+CFLAGS += -O3 -flto
+CXXFLAGS += -O3 -flto
 endif
 
-all: dhcpd dhcpstress dhcpctl schema.sql
+LDFLAGS += -lev
+CFLAGS += -Wall -Wextra -Werror -std=c11 -pedantic -fno-strict-aliasing
+CXXFLAGS += -Wall -Wextra -Werror -std=c++11 -pedantic -fno-strict-aliasing
 
-schema.sql: tools/dump-schema
-	./tools/dump-schema > $@
+SRCS := $(wildcard *.c)
+SRCS_MAIN := $(shell $(GREP) -l 'int main' $(SRCS))
+SRCS_UTIL := $(filter-out $(SRCS_MAIN), $(SRCS))
 
-tools/dump-schema: tools/dump-schema.o
-	$(LD) $(LDFLAGS) -o $@ $^
+OBJS := $(patsubst %.c,%.o,$(SRCS))
+OBJS_MAIN := $(patsubst %.c,%.o,$(SRCS_MAIN))
+OBJS_UTIL := $(patsubst %.c,%.o,$(SRCS_UTIL))
 
-dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
-	$(LD) $(LDFLAGS) -lev -lsqlite3 $(L_CAP_NG) -o $@ $^
+BIN := $(patsubst %.c,%,$(shell $(GREP) -l 'int main' $(SRCS_MAIN)))
 
-dhcpstress: dhcpstress.o dhcp.o
-	$(LD) $(LDFLAGS) -o $@ $^
+LIBS += libcap-ng
 
-dhcpctl: dhcpctl.o db.o
-	$(LD) $(LDFLAGS) -lsqlite3 -o $@ $^
+LDFLAGS += $(shell pkg-config --libs $(LIBS))
+CFLAGS += $(shell pkg-config --cflags $(LIBS))
 
-%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+all: $(BIN)
 
 clean:
-	$(RM) dhcpd dhcpstress dhcpctl
-	$(RM) tools/dump-schema
-	$(RM) schema.sql
-	$(FIND) ./ -name '*.o' -type f -delete
+	$(RM) dhcpd dhcpstress *.d *.o
 
-fullclean:
-	$(FIND) ./ -name '*.db' -type f -delete
+$(BIN): $(OBJS)
+	$(LD) -o $@ $@.o $(OBJS_UTIL) $(LDFLAGS) $(FLAGS_L)
 
-dhcpd.o: array.h dhcp.h argv.h error.h db.h config.h iplist.h
-argv.o: argv.h
-config.o: config.h
-dhcp.o: dhcp.h
-db.o: db.h
-dhcpstress.o: error.h dhcp.h
-tools/dump-schema.o: db.h
-
-dhcp.h: array.h
-db.h: iplist.h dhcp.h
-config.h: argv.h
-
+-include %.d
