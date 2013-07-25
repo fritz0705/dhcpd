@@ -5,7 +5,6 @@ CC := gcc
 LD := $(CC)
 CXX := g++
 
-FIND ?= find
 GREP ?= grep
 
 PKGCONFIG ?= pkg-config
@@ -20,7 +19,7 @@ CFLAGS += -O3 -flto
 CXXFLAGS += -O3 -flto
 endif
 
-LDFLAGS +=
+LDFLAGS += -lev
 CFLAGS += -Wall -Wextra -Werror -std=c11 -pedantic -fno-strict-aliasing
 CXXFLAGS += -Wall -Wextra -Werror -std=c++11 -pedantic -fno-strict-aliasing
 
@@ -35,40 +34,16 @@ OBJS_UTIL := $(patsubst %.c,%.o,$(SRCS_UTIL))
 BIN := $(patsubst %.c,%,$(shell $(GREP) -l 'int main' $(SRCS_MAIN)))
 
 LIBS += libcap-ng
-#Unfortunately not found by pkg-config on Ubuntu 13.04
-#LIBS += libev
 
-FLAGS_L = $(shell pkg-config --libs $(LIBS))
-FLAGS_C = $(shell pkg-config --cflags $(LIBS))
-
-#Work-around for Ubuntu 13.04
-FLAGS_L += -lev
-FLAGS_C +=
+LDFLAGS += $(shell pkg-config --libs $(LIBS))
+CFLAGS += $(shell pkg-config --cflags $(LIBS))
 
 all: $(BIN)
 
 clean:
-	$(RM) dhcpd dhcpstress
-	$(FIND) ./ -name '*.d' -type f -delete
-	$(FIND) ./ -name '*.o' -type f -delete
+	$(RM) dhcpd dhcpstress *.d *.o
 
 $(BIN): $(OBJS)
 	$(LD) -o $@ $@.o $(OBJS_UTIL) $(LDFLAGS) $(FLAGS_L)
-
-%.d:
-
-%.d: %.c
-	$(CC) $(CFLAGS) -M -o $@ $<
-
-%.d: %.cpp
-	$(CXX) $(CXXFLAGS) -M -o $@ $<
-
-%.o:
-
-%.o: %.c %.d
-	$(CC) -o $@ $(CFLAGS) $(FLAGS_C) -c $<
-
-%.o: %.cpp %.d
-	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
 -include %.d
