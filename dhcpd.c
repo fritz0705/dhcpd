@@ -156,10 +156,11 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	(void)EV_A;
 
 	struct in_addr *requested_server;
+	struct in_addr *requested_addr;
 	uint8_t *options;
 	struct dhcp_opt current_opt;
 
-//	requested_addr = NULL;
+	requested_addr = NULL;
 	requested_server = (struct in_addr *)DHCP_MSG_F_SIADDR(msg->data);
 	options = DHCP_MSG_F_OPTIONS(msg->data);
 
@@ -167,7 +168,7 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		switch (current_opt.code)
 		{
 			case DHCP_OPT_REQIPADDR:
-//				requested_addr = (struct in_addr *)current_opt.data;
+				requested_addr = (struct in_addr *)current_opt.data;
 				break;
 			case DHCP_OPT_SERVERID:
 				requested_server = (struct in_addr *)current_opt.data;
@@ -202,6 +203,8 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 	} else {
 		// ACK
 		dhcp_msg_reply(send_buffer, &options, &send_len, msg, DHCPACK);
+
+		memcpy(&lease.address, requested_addr, sizeof(struct in_addr));
 
 		ARRAY_COPY(DHCP_MSG_F_YIADDR(send_buffer), &lease.address, 4);
 
