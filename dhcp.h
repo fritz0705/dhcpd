@@ -10,9 +10,6 @@
 
 #include "array.h"
 
-#ifndef DHCPD_DHCP_H_
-#define DHCPD_DHCP_H_
-
 /* A DHCP message consists of a fixed-length header and a variable-length
  * option part:
  *
@@ -223,6 +220,3 @@ extern void dhcp_msg_dump(FILE *stream, struct dhcp_msg *msg);
 extern uint8_t *dhcp_opt_add_lease(uint8_t *options,
 	size_t *send_len,
 	struct dhcp_lease *lease);
-
-#endif
-

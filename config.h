@@ -8,9 +8,6 @@
 
 #include "argv.h"
 
-#ifndef DHCPD_CONFIG_H_
-#define DHCPD_CONFIG_H_
-
 struct config
 {
 	struct argv *argv;
@@ -60,6 +57,3 @@ static inline void config_free(struct config *cfg)
 	if (cfg->nameservers)
 		cfg->nameservers = realloc(cfg->nameservers, cfg->nameservers_cnt = 0);
 }
-
-#endif
-

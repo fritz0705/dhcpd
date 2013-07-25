@@ -5,9 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef DHCPD_ERROR_H_
-#define DHCPD_ERROR_H_
-
 static inline void dhcpd_error(int _exit, int _errno, const char *fmt, ...)
 {
 	va_list ap;
@@ -22,6 +19,3 @@ static inline void dhcpd_error(int _exit, int _errno, const char *fmt, ...)
 	if (_exit > 0)
 		exit(_exit);
 }
-
-#endif
-
