@@ -1,47 +1,74 @@
 .PHONY: all install clean
+.SUFFIXES: .d
 
 CC := gcc
 LD := $(CC)
+CXX := g++
 
 FIND ?= find
+GREP ?= grep
 
-ifeq ($(shell uname),Linux)
-WITH_CAP_DROP ?= yes
-endif
-
-ifdef WITH_CAP_DROP
-L_CAP_NG=$(shell pkg-config --libs libcap-ng)
-endif
-
-override LDFLAGS := $(LDFLAGS) -flto -O3
-override CFLAGS := -Wall -Wextra -Werror -fno-strict-aliasing -flto -O3 -std=gnu11 -pedantic $(CFLAGS)
-override CPPFLAGS := $(CPPFLAGS)
+PKGCONFIG ?= pkg-config
 
 ifdef DEBUG
-override CFLAGS += -O0 -g
+LDFLAGS += -g -O0
+CFLAGS += -g -O0
+CXXFLAGS += -g -O0
+else
+LDFLAGS += -O3 -flto
+CFLAGS += -O3 -flto
+CXXFLAGS += -O3 -flto
 endif
 
-all: dhcpd dhcpstress
+LDFLAGS +=
+CFLAGS += -Wall -Wextra -Werror -std=c11 -pedantic -fno-strict-aliasing
+CXXFLAGS += -Wall -Wextra -Werror -std=c++11 -pedantic -fno-strict-aliasing
 
-dhcpd: dhcpd.o argv.o config.o dhcp.o
-	$(LD) $(LDFLAGS) -o $@ $^ -lev $(L_CAP_NG)
+SRCS := $(wildcard *.c)
+SRCS_MAIN := $(shell $(GREP) -l 'int main' $(SRCS))
+SRCS_UTIL := $(filter-out $(SRCS_MAIN), $(SRCS))
 
-dhcpstress: dhcpstress.o dhcp.o
-	$(LD) $(LDFLAGS) -o $@ $^
+OBJS := $(patsubst %.c,%.o,$(SRCS))
+OBJS_MAIN := $(patsubst %.c,%.o,$(SRCS_MAIN))
+OBJS_UTIL := $(patsubst %.c,%.o,$(SRCS_UTIL))
 
-%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+BIN := $(patsubst %.c,%,$(shell $(GREP) -l 'int main' $(SRCS_MAIN)))
+
+LIBS += libcap-ng
+#Unfortunately not found by pkg-config on Ubuntu 13.04
+#LIBS += libev
+
+FLAGS_L = $(shell pkg-config --libs $(LIBS))
+FLAGS_C = $(shell pkg-config --cflags $(LIBS))
+
+#Work-around for Ubuntu 13.04
+FLAGS_L += -lev
+FLAGS_C +=
+
+all: $(BIN)
 
 clean:
 	$(RM) dhcpd dhcpstress
+	$(FIND) ./ -name '*.d' -type f -delete
 	$(FIND) ./ -name '*.o' -type f -delete
 
-dhcpd.o: array.h dhcp.h argv.h error.h config.h iplist.h
-argv.o: argv.h
-config.o: config.h
-dhcp.o: dhcp.h
-dhcpstress.o: error.h dhcp.h
+$(BIN): $(OBJS)
+	$(LD) -o $@ $@.o $(OBJS_UTIL) $(LDFLAGS) $(FLAGS_L)
 
-dhcp.h: array.h
-config.h: argv.h
+%.d:
 
+%.d: %.c
+	$(CC) $(CFLAGS) -M -o $@ $<
+
+%.d: %.cpp
+	$(CXX) $(CXXFLAGS) -M -o $@ $<
+
+%.o:
+
+%.o: %.c %.d
+	$(CC) -o $@ $(CFLAGS) $(FLAGS_C) -c $<
+
+%.o: %.cpp %.d
+	$(CXX) $(CXXFLAGS) -o $@ -c $<
+
+-include %.d
