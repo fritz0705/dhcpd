@@ -34,6 +34,7 @@
 #include "error.h"
 #include "config.h"
 #include "iplist.h"
+#include "pool.h"
 
 #ifndef RECV_BUF_LEN
 #define RECV_BUF_LEN 4096
@@ -55,6 +56,8 @@ uint8_t recv_buffer[RECV_BUF_LEN];
 uint8_t send_buffer[SEND_BUF_LEN];
 
 struct config cfg = CONFIG_EMPTY;
+
+struct pool *pool;
 
 bool debug = false;
 
@@ -119,7 +122,16 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		.prefixlen = cfg.prefixlen
 	};
 
-	lease.address.s_addr = htonl(0xC0A81765);
+	struct pool_entry *entry;
+
+	entry = pool_get(pool);
+
+	if (entry == NULL)
+		return;
+
+	lease.address.s_addr = entry->address.s_addr;
+
+	free(entry);
 
 	size_t send_len;
 	uint8_t *options;
@@ -434,6 +446,18 @@ int main(int argc, char **argv)
 #else
 		dhcpd_error(1, 0, "Can only drop privileges on Linux");
 #endif
+	}
+
+	/* Prepare dummy IP Pool */
+	pool = pool_create();
+
+	struct pool_entry entry;
+	uint32_t ip;
+
+	IPRANGE_FOREACH(cfg.iprange[0], cfg.iprange[1], ip) {
+		entry.address.s_addr = htonl(ip);
+
+		pool_add(pool, &entry);
 	}
 
 	/* Set client IP address */
