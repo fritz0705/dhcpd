@@ -119,6 +119,8 @@ static void discover_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 		.prefixlen = cfg.prefixlen
 	};
 
+	lease.address.s_addr = htonl(0xC0A81765);
+
 	size_t send_len;
 	uint8_t *options;
 	dhcp_msg_reply(send_buffer, &options, &send_len, msg, DHCPOFFER);
