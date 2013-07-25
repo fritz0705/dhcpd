@@ -18,8 +18,9 @@ static const struct option long_options[] =
 
 		{"interface",   required_argument, 0, 'i'},
 
-		{"prefix",      required_argument, 0, 'p'},
-		{"range",       required_argument, 0, 'r'},
+		{"prefixlen",   required_argument, 0, 'p'},
+		{"start",       required_argument, 0, 's'},
+		{"end",         required_argument, 0, 'e'},
 		{"leasetime",   required_argument, 0, 't'},
 		{"ltime",       required_argument, 0, 't'},
 
@@ -45,7 +46,7 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		int idx = getopt_long (argc, argv, "Vdg:hi:r:t:u:", long_options, &option_index);
+		int idx = getopt_long (argc, argv, "Vdg:hi:p:s:e:t:u:", long_options, &option_index);
 
 		if(-1 == idx) {
 			break;
@@ -78,10 +79,14 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 				break;
 
 			case 'p':
+				out->prefixlen = optarg;
+				break;
+
+			case 's':
 				out->iprange[0] = optarg;
 				break;
 
-			case 'r':
+			case 'e':
 				out->iprange[1] = optarg;
 				break;
 
