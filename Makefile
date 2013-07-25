@@ -23,8 +23,8 @@ endif
 
 all: dhcpd dhcpstress
 
-dhcpd: dhcpd.o argv.o config.o dhcp.o db.o
-	$(LD) $(LDFLAGS) -o $@ $^ -lev -lsqlite3 $(L_CAP_NG)
+dhcpd: dhcpd.o argv.o config.o dhcp.o
+	$(LD) $(LDFLAGS) -o $@ $^ -lev $(L_CAP_NG)
 
 dhcpstress: dhcpstress.o dhcp.o
 	$(LD) $(LDFLAGS) -o $@ $^
@@ -36,14 +36,12 @@ clean:
 	$(RM) dhcpd dhcpstress
 	$(FIND) ./ -name '*.o' -type f -delete
 
-dhcpd.o: array.h dhcp.h argv.h error.h db.h config.h iplist.h
+dhcpd.o: array.h dhcp.h argv.h error.h config.h iplist.h
 argv.o: argv.h
 config.o: config.h
 dhcp.o: dhcp.h
-db.o: db.h
 dhcpstress.o: error.h dhcp.h
 
 dhcp.h: array.h
-db.h: iplist.h dhcp.h
 config.h: argv.h
 
