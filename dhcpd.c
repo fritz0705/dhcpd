@@ -323,35 +323,6 @@ static void request_cb(EV_P_ ev_io *w, struct dhcp_msg *msg)
 
 	unalloc_lease = true;
 
-	if (!inet_pton(AF_INET, db_lease.address, &lease.address))
-		goto invalid_lease_entry;
-
-	if (db_lease.routers)
-		if (!iplist_parse(db_lease.routers, &lease.routers, &lease.routers_cnt))
-			goto invalid_lease_entry;
-
-	if (db_lease.nameservers)
-		if (!iplist_parse(db_lease.nameservers, &lease.nameservers, &lease.nameservers_cnt))
-			goto invalid_lease_entry;
-
-	if (0)
-	{
-invalid_lease_entry:
-		fprintf(stderr, "Invalid lease entry for %s:\n"
-				"\tAddress: %s\n"
-				"\tRouters: %s\n"
-				"\tNameservers: %s\n"
-				"\tPrefix Length: %hhu\n"
-				"\tLease Time: %u\n",
-				msg->chaddr,
-				db_lease.address,
-				db_lease.routers,
-				db_lease.nameservers,
-				db_lease.prefixlen,
-				db_lease.leasetime);
-		goto nack;
-	}
-
 	if (memcmp(&lease.address, requested_addr, 4) != 0)
 	{
 		size_t send_len;
