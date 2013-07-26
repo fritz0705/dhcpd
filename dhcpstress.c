@@ -194,7 +194,7 @@ static inline bool argv_parse(int argc, char **argv, struct argv *out)
 				out->local[1] = arg;
 				state = _ARGV_S_ARGUMENT;
 				break;
-				
+
 			case _ARGV_S_SLEEP_VAL:
 				out->sleep = arg;
 				state = _ARGV_S_ARGUMENT;
@@ -233,8 +233,10 @@ static inline bool config_fill(struct config *cfg, struct argv *argv)
 			.sin_family = AF_INET,
 			.sin_port = atoi(argv->remote[1])
 		};
-		if (inet_pton(AF_INET, argv->remote[0], &cfg->remote.sin_addr.s_addr) != 1)
-			goto invalid_remote_address;
+		if (inet_pton(AF_INET, argv->remote[0], &cfg->remote.sin_addr.s_addr) != 1) {
+			cfg->error = "Invalid remote address";
+			return false;
+		}
 	}
 
 	if (argv->local[0] && argv->local[1])
@@ -243,8 +245,10 @@ static inline bool config_fill(struct config *cfg, struct argv *argv)
 			.sin_family = AF_INET,
 			.sin_port = atoi(argv->local[1])
 		};
-		if (inet_pton(AF_INET, argv->local[0], &cfg->local.sin_addr.s_addr) != 1)
-			goto invalid_local_address;
+		if (inet_pton(AF_INET, argv->local[0], &cfg->local.sin_addr.s_addr) != 1) {
+			cfg->error = "Invalid local address";
+			return false;
+		}
 	}
 
 	if (argv->type)
@@ -258,22 +262,6 @@ static inline bool config_fill(struct config *cfg, struct argv *argv)
 	}
 
 	return true;
-
-	switch (1)
-	{
-		default:
-			break;
-
-invalid_remote_address:
-			cfg->error = "Invalid remote address";
-			break;
-
-invalid_local_address:
-			cfg->error = "Invalid local address";
-			break;
-	}
-
-	return false;
 }
 
 #define SEND_BUF_LEN 4096
