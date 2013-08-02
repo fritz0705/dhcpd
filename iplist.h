@@ -26,18 +26,17 @@ struct iplist
 /**
  * Convert ip list to text presentation
  */
-static inline char *iplist_dump(struct in_addr *in, size_t in_cnt, char *out, size_t out_len)
+static inline size_t iplist_dump(const struct in_addr in[], size_t in_cnt, char *out, size_t out_len)
 {
 	size_t n_len = INET_ADDRSTRLEN * in_cnt + in_cnt;
-	if (out == NULL)
-		out = malloc(n_len);
-	memset(out, 0, n_len);
+	if (!out)
+		return n_len;
 	if (n_len > out_len)
-		return NULL;
+		return 0;
 
 	for (size_t i = 0; i < in_cnt; ++i)
 	{
-		inet_ntop(AF_INET, &in[i], out, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, in + i, out, INET_ADDRSTRLEN);
 
 		while (*out)
 			++out;
@@ -48,7 +47,7 @@ static inline char *iplist_dump(struct in_addr *in, size_t in_cnt, char *out, si
 
 	*(out-1) = 0;
 
-	return out;
+	return n_len;
 }
 
 /**
