@@ -13,13 +13,6 @@
 
 static inline void dhcpd_error(int _exit, int _errno, const char *fmt, ...)
 {
-#ifdef DHCP_DHCPD
-	extern sqlite3 *leasedb;
-
-	if (leasedb)
-		sqlite3_exec(leasedb, "COMMIT;", NULL, NULL, NULL);
-#endif
-
 	va_list ap;
 	va_start(ap, fmt);
 

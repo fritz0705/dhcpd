@@ -30,7 +30,9 @@ enum argv_p_state
 	/* Value for -leasetime */
 	_ARGV_S_LEASETIME_VAL,
 	/* Value for -gc */
-	_ARGV_S_GC_VAL
+	_ARGV_S_GC_VAL,
+	/* Value for -template */
+	_ARGV_S_TPL_VAL
 };
 
 bool argv_parse(int argc, char **argv, struct argv *out)
@@ -77,6 +79,8 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 					state = _ARGV_S_PREFIXLEN_VAL;
 				else if (!strcmp(arg, "-leasetime"))
 					state = _ARGV_S_LEASETIME_VAL;
+				else if (!strcmp(arg, "-template"))
+					state = _ARGV_S_TPL_VAL;
 				else
 				{
 					out->argerror = i;
@@ -114,35 +118,17 @@ bool argv_parse(int argc, char **argv, struct argv *out)
 				state = _ARGV_S_ARGUMENT;
 				break;
 
-			case _ARGV_S_ROUTERS_VAL:
-				out->routers = argv_realloc(
-					out->routers,
-					++out->routers_cnt * sizeof(char*));
-				out->routers[out->routers_cnt - 1] = arg;
-				state = _ARGV_S_ARGUMENT;
-				break;
-
-			case _ARGV_S_NAMESERVERS_VAL:
-				out->nameservers = argv_realloc(
-					out->nameservers,
-					++out->nameservers_cnt * sizeof(char*));
-				out->nameservers[out->nameservers_cnt - 1] = arg;
-				state = _ARGV_S_ARGUMENT;
-				break;
-
-			case _ARGV_S_LEASETIME_VAL:
-				out->leasetime = arg;
-				state = _ARGV_S_ARGUMENT;
-				break;
-
-			case _ARGV_S_PREFIXLEN_VAL:
-				out->prefixlen = arg;
-				state = _ARGV_S_ARGUMENT;
-				break;
-
 			case _ARGV_S_GC_VAL:
 				out->gc = arg;
 				state = _ARGV_S_ARGUMENT;
+				break;
+
+			case _ARGV_S_TPL_VAL:
+				out->tpl = arg;
+				state = _ARGV_S_ARGUMENT;
+				break;
+
+			default:
 				break;
 		}
 	}

@@ -31,19 +31,8 @@ struct argv
 	/* -iprange IP IP */
 	char *iprange[2];
 
-	/* -router IP */
-	char **routers;
-	size_t routers_cnt;
-
-	/* -nameserver IP */
-	char **nameservers;
-	size_t nameservers_cnt;
-
-	/* -prefixlen INT */
-	char *prefixlen;
-
-	/* -leasetime INT */
-	char *leasetime;
+	/* -template KEY */
+	char *tpl;
 
 	/* -gc INT */
 	char *gc;
@@ -69,14 +58,11 @@ struct argv
 		.user = NULL,\
 		.group = NULL,\
 		.iprange = { NULL, NULL },\
-		.routers = NULL,\
-		.routers_cnt = 0,\
-		.nameservers = NULL,\
-		.nameservers_cnt = 0,\
 		.allocate = false,\
 		.help = false,\
 		.version = false,\
 		.debug = false,\
+		.tpl = NULL,\
 		._new = false\
 	}
 
@@ -101,10 +87,7 @@ extern bool argv_parse(int argc, char **argv, struct argv *out);
  */
 static inline void argv_free(struct argv *out)
 {
-	if (out->routers)
-		out->routers = argv_realloc(out->routers, out->routers_cnt = 0);
-	if (out->nameservers)
-		out->nameservers = argv_realloc(out->nameservers, out->nameservers_cnt = 0);
+	(void)out;
 }
 
 #endif
