@@ -1,27 +1,23 @@
 #pragma once
 
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "log.h"
 
 #ifndef DHCPD_ERROR_H_
 #define DHCPD_ERROR_H_
 
-static inline void dhcpd_error(int exit_, int errno_, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
+#define dhcpd_error(__exit, __errno, ...) do { \
+		if (__errno) \
+			dhcpd_log_ERROR(strerror(__errno)); \
+		dhcpd_log_ERROR(__VA_ARGS__); \
+		exit(__exit); \
+	} while (0);
 
-	if (errno_ != 0)
-		fprintf(stderr, "%s: ", strerror(errno_));
-
-	vfprintf(stderr, fmt, ap);
-	fputc('\n', stderr);
-
-	if (exit_ > 0)
-		exit(exit_);
-}
+#define dhcpd_warn dhcpd_log_WARNING
+#define dhcpd_notice dhcpd_log_NOTICE
+#define dhcpd_debug dhcpd_log_DEBUG
 
 #endif
 
